@@ -11,21 +11,11 @@ services:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
   backend:
     build: ./backend
@@ -38,10 +28,8 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - postgres
+      - redis
     volumes:
       - ./backend:/app
       - clip_storage:/app/storage
@@ -64,15 +52,9 @@ services:
     build: ./frontend
     ports:
       - "80:80"
-    depends_on:
-      - backend
     environment:
       VITE_API_URL: http://backend:8000/api
 
 volumes:
   postgres_data:
   clip_storage:
-
-networks:
-  default:
-    name: clip-generator-network
