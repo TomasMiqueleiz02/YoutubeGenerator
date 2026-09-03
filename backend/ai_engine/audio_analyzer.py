@@ -1,6 +1,9 @@
 import warnings
+
 import numpy as np
 import librosa
+
+from .audio_extract import extracted_audio
 
 warnings.filterwarnings("ignore")
 
@@ -16,7 +19,9 @@ class AudioAnalyzer:
 
     def analyze(self) -> np.ndarray:
         """Analyzes audio and returns a timeline of scores, one per second."""
-        self.y, self.sr = librosa.load(self.video_path, sr=self.sr)
+        # soundfile cannot open MP4, so pull the audio out first
+        with extracted_audio(self.video_path, self.sr) as wav_path:
+            self.y, self.sr = librosa.load(wav_path, sr=self.sr)
 
         if self.y is None or len(self.y) == 0:
             return np.array([], dtype=float)

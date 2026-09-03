@@ -1,6 +1,8 @@
 import numpy as np
 from typing import Dict, List, Optional
 
+from .audio_extract import extracted_audio
+
 
 class ContentAnalyzer:
     """Analyzes audio energy patterns to simulate content engagement.
@@ -17,7 +19,9 @@ class ContentAnalyzer:
         """Returns content engagement timeline, one score per second."""
         try:
             import librosa
-            y, sr = librosa.load(self.video_path, sr=22050)
+
+            with extracted_audio(self.video_path, 22050) as wav_path:
+                y, sr = librosa.load(wav_path, sr=22050)
             rms = librosa.feature.rms(y=y, hop_length=512)[0]
             # Normalize to 0-100
             if len(rms) > 0 and np.max(rms) > np.min(rms):
