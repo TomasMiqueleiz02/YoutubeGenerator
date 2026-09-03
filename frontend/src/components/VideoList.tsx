@@ -1,101 +1,172 @@
-import { useEffect } from "react";
 import { useStore } from "../store/useStore";
 import { apiClient } from "../services/api";
 import { Video } from "../types";
 
 interface Props {
-  onVideoSelected: (video: Video) => void;
+  loading: boolean;
+  onOpen: (video: Video) => void;
 }
 
-export default function VideoList({ onVideoSelected }: Props) {
-  const { videos, setVideos, setLoading, setError } = useStore();
+/** Plain-language stage labels: "processing 60%" means nothing on its own. */
+const STAGES: Record<string, { label: string; tone: string }> = {
+  pending: { label: "En cola", tone: "var(--text-dim)" },
+  downloading: { label: "Descargando", tone: "var(--warn)" },
+  downloaded: { label: "Descargado", tone: "var(--warn)" },
+  processing: { label: "Analizando", tone: "var(--warn)" },
+  analyzed: { label: "Cortando clips", tone: "var(--warn)" },
+  completed: { label: "Listo", tone: "var(--good)" },
+  error: { label: "Falló", tone: "var(--bad)" },
+};
 
-  useEffect(() => {
-    loadVideos();
-  }, []);
+function formatDuration(seconds?: number) {
+  if (!seconds) return null;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
 
-  const loadVideos = async () => {
-    setLoading(true);
-    try {
-      const result = await apiClient.listVideos();
-      setVideos(result.videos);
-    } catch (err: any) {
-      setError(err.response?.data?.detail || "Failed to load videos");
-    } finally {
-      setLoading(false);
-    }
-  };
+export default function VideoList({ loading, onOpen }: Props) {
+  const { videos, setVideos } = useStore();
 
-  const handleDelete = async (videoId: string, e: React.MouseEvent) => {
+  const remove = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    setVideos(videos.filter((v) => v.id !== id));
     try {
-      await apiClient.deleteVideo(videoId);
-      setVideos(videos.filter((v) => v.id !== videoId));
-    } catch (err: any) {
-      setError(err.response?.data?.detail || "Failed to delete video");
+      await apiClient.deleteVideo(id);
+    } catch {
+      /* the row is already gone locally; a refresh restores truth */
     }
   };
 
-  const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-      pending: "bg-gray-600",
-      downloading: "bg-blue-600",
-      processing: "bg-purple-600",
-      analyzed: "bg-indigo-600",
-      completed: "bg-green-600",
-      error: "bg-red-600",
-    };
-    return colors[status] || "bg-gray-600";
-  };
+  if (loading) {
+    return (
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="card h-44 animate-pulse" />
+        ))}
+      </div>
+    );
+  }
+
+  if (videos.length === 0) {
+    return (
+      <div className="card flex flex-col items-center py-16 text-center">
+        <div className="mb-3 text-3xl opacity-60">🎬</div>
+        <p className="font-medium">Todavía no hay videos</p>
+        <p className="mt-1.5 max-w-xs text-sm" style={{ color: "var(--text-dim)" }}>
+          Pegá un link arriba para empezar. El primero puede tardar unos minutos.
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      {videos.map((video) => (
-        <div
-          key={video.id}
-          onClick={() => onVideoSelected(video)}
-          className="bg-gray-800 rounded-lg overflow-hidden border border-gray-700 hover:border-orange-500 cursor-pointer transition-colors"
-        >
-          {video.thumbnail_url && (
-            <img
-              src={video.thumbnail_url}
-              alt={video.title}
-              className="w-full h-40 object-cover"
-            />
-          )}
-          <div className="p-4">
-            <h3 className="font-bold text-white line-clamp-2 mb-2">
-              {video.title || "Untitled"}
-            </h3>
-            <p className="text-sm text-gray-400 mb-3">
-              {video.channel_name || "Unknown channel"}
-            </p>
-            <div className="mb-3">
-              <div className="flex justify-between text-xs text-gray-400 mb-1">
-                <span className={`${getStatusColor(video.status)} px-2 py-1 rounded text-white text-xs font-semibold`}>
-                  {video.status}
-                </span>
-                <span>{video.processing_progress}%</span>
-              </div>
-              <div className="w-full bg-gray-700 rounded-full h-2">
-                <div
-                  className="bg-orange-500 h-2 rounded-full transition-all"
-                  style={{ width: `${video.processing_progress}%` }}
-                ></div>
-              </div>
-            </div>
-            {video.error_message && (
-              <p className="text-xs text-red-400 mb-2">{video.error_message}</p>
-            )}
-            <button
-              onClick={(e) => handleDelete(video.id, e)}
-              className="text-xs text-red-400 hover:text-red-300"
+    <>
+      <h2 className="mb-3 text-sm font-semibold" style={{ color: "var(--text-dim)" }}>
+        Tus videos ({videos.length})
+      </h2>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {videos.map((video) => {
+          const stage = STAGES[video.status] || STAGES.pending;
+          const active = !["completed", "error"].includes(video.status);
+          const duration = formatDuration(video.duration_seconds);
+
+          return (
+            <article
+              key={video.id}
+              onClick={() => onOpen(video)}
+              className="card card-interactive group overflow-hidden"
             >
-              Delete
-            </button>
-          </div>
-        </div>
-      ))}
-    </div>
+              <div className="relative aspect-video overflow-hidden" style={{ background: "var(--bg)" }}>
+                {video.thumbnail_url ? (
+                  <img
+                    src={video.thumbnail_url}
+                    alt=""
+                    loading="lazy"
+                    // Older rows hold expired signed URLs; fall back to the
+                    // placeholder rather than showing a broken image icon.
+                    onError={(e) => {
+                      e.currentTarget.style.display = "none";
+                    }}
+                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-2xl opacity-30">
+                    🎬
+                  </div>
+                )}
+
+                {duration && (
+                  <span
+                    className="absolute bottom-2 right-2 rounded px-1.5 py-0.5 text-xs font-medium"
+                    style={{ background: "rgba(0,0,0,0.78)", color: "#fff" }}
+                  >
+                    {duration}
+                  </span>
+                )}
+              </div>
+
+              <div className="p-4">
+                <h3 className="mb-2 line-clamp-2 text-sm font-semibold leading-snug">
+                  {video.title || "Sin título"}
+                </h3>
+
+                <div className="mb-2.5 flex items-center gap-2">
+                  <span className="chip" style={{ background: "var(--bg)", color: stage.tone }}>
+                    {active && (
+                      <span
+                        className="pulse-dot h-1.5 w-1.5 rounded-full"
+                        style={{ background: stage.tone }}
+                      />
+                    )}
+                    {stage.label}
+                  </span>
+                  {active && (
+                    <span className="text-xs" style={{ color: "var(--text-faint)" }}>
+                      {Math.round(video.processing_progress)}%
+                    </span>
+                  )}
+                </div>
+
+                {active && (
+                  <div
+                    className="relative mb-2.5 h-1 overflow-hidden rounded-full"
+                    style={{ background: "var(--border)" }}
+                  >
+                    <div
+                      className="h-full rounded-full transition-all duration-700"
+                      style={{
+                        width: `${Math.max(4, video.processing_progress)}%`,
+                        background: "var(--accent)",
+                      }}
+                    />
+                  </div>
+                )}
+
+                {video.status === "error" && video.error_message && (
+                  <p className="mb-2 line-clamp-2 text-xs" style={{ color: "var(--bad)" }}>
+                    {video.error_message}
+                  </p>
+                )}
+
+                <div className="flex items-center justify-between">
+                  <span className="text-xs" style={{ color: "var(--text-faint)" }}>
+                    {video.channel_name || ""}
+                  </span>
+                  <button
+                    onClick={(e) => remove(video.id, e)}
+                    className="text-xs opacity-0 transition-opacity group-hover:opacity-100"
+                    style={{ color: "var(--text-faint)" }}
+                  >
+                    Eliminar
+                  </button>
+                </div>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </>
   );
 }

@@ -3,46 +3,74 @@ import { useStore } from "../store/useStore";
 import { apiClient } from "../services/api";
 
 export default function VideoUpload() {
-  const { addVideo, setError } = useStore();
+  const { addVideo } = useStore();
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!url.trim()) return;
 
+    setError(null);
     setLoading(true);
     try {
-      const video = await apiClient.createVideo(url);
-      addVideo(video);
+      addVideo(await apiClient.createVideo(url.trim()));
       setUrl("");
     } catch (err: any) {
-      setError(err.response?.data?.detail || "Failed to upload video");
+      const detail = err.response?.data?.detail || "";
+      // Surface the common failures in plain language instead of a stack of
+      // yt-dlp jargon the user cannot act on.
+      if (/bot|sign in|cookies/i.test(detail)) {
+        setError(
+          "YouTube bloqueó la descarga. Revisá que el worker esté corriendo en tu PC."
+        );
+      } else if (/already exists/i.test(detail)) {
+        setError("Ese video ya está en tu lista.");
+      } else if (/unavailable|private|not found/i.test(detail)) {
+        setError("El video no está disponible o es privado.");
+      } else {
+        setError(detail.slice(0, 160) || "No se pudo agregar el video.");
+      }
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-      <h2 className="text-xl font-bold mb-4">Add YouTube Video</h2>
-      <form onSubmit={handleSubmit} className="flex gap-2">
+    <section className="mb-10">
+      <h1 className="mb-1 text-2xl font-bold tracking-tight">Nuevo video</h1>
+      <p className="mb-4 text-sm" style={{ color: "var(--text-dim)" }}>
+        Pegá un link de YouTube y te devuelvo los mejores momentos, ya cortados
+        en vertical y con subtítulos.
+      </p>
+
+      <form onSubmit={handleSubmit} className="flex flex-col gap-2.5 sm:flex-row">
         <input
           type="text"
-          placeholder="Paste YouTube URL..."
           value={url}
           onChange={(e) => setUrl(e.target.value)}
-          className="flex-1 bg-gray-700 border border-gray-600 rounded px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:border-orange-500"
+          placeholder="https://www.youtube.com/watch?v=..."
+          className="input flex-1"
           disabled={loading}
         />
         <button
           type="submit"
           disabled={loading || !url.trim()}
-          className="bg-orange-500 hover:bg-orange-600 disabled:opacity-50 px-6 py-2 rounded font-semibold transition-colors"
+          className="btn btn-primary sm:w-40"
         >
-          {loading ? "Processing..." : "Add Video"}
+          {loading ? "Agregando..." : "Generar clips"}
         </button>
       </form>
-    </div>
+
+      {error && (
+        <div
+          className="mt-3 rounded-lg px-3.5 py-2.5 text-sm"
+          style={{ background: "rgba(248,113,113,0.1)", color: "var(--bad)" }}
+        >
+          {error}
+        </div>
+      )}
+    </section>
   );
 }

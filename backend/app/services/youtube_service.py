@@ -127,7 +127,9 @@ class YouTubeService:
         return {
             "title": info.get("title") or "Untitled",
             "channel": info.get("uploader") or info.get("channel") or "Unknown",
-            "thumbnail": info.get("thumbnail"),
+            # yt-dlp hands back a signed thumbnail URL that stops serving after
+            # a while, leaving blank cards. The canonical path never expires.
+            "thumbnail": "https://i.ytimg.com/vi/%s/hqdefault.jpg" % video_id,
             "duration": int(info.get("duration") or 0),
             "width": info.get("width"),
             "height": info.get("height"),

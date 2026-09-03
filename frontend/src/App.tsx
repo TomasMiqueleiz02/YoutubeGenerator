@@ -6,38 +6,35 @@ import Dashboard from "./components/Dashboard";
 
 export default function App() {
   const { user, setUser, token } = useStore();
-  const [loading, setLoading] = useState(true);
+  const [checking, setChecking] = useState(true);
+
+  const loadUser = async () => {
+    try {
+      setUser(await apiClient.getCurrentUser());
+    } catch {
+      setUser(null);
+    } finally {
+      setChecking(false);
+    }
+  };
 
   useEffect(() => {
     if (token) {
       loadUser();
     } else {
-      setLoading(false);
+      setChecking(false);
     }
   }, [token]);
 
-  const loadUser = async () => {
-    try {
-      const currentUser = await apiClient.getCurrentUser();
-      setUser(currentUser);
-    } catch (err) {
-      console.error("Failed to load user", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (loading) {
+  if (checking) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 flex items-center justify-center text-white">
-        <div>Loading...</div>
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="text-sm" style={{ color: "var(--text-dim)" }}>
+          Cargando...
+        </div>
       </div>
     );
   }
 
-  if (!user) {
-    return <Login onLoginSuccess={loadUser} />;
-  }
-
-  return <Dashboard />;
+  return user ? <Dashboard /> : <Login onLoginSuccess={loadUser} />;
 }
