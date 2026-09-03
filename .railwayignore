@@ -1,0 +1,10 @@
+# Railway ignore - similar a .gitignore pero para deploy
+__pycache__/
+*.pyc
+.git/
+.vscode/
+node_modules/
+.env.local
+.env.development
+storage/
+*.log
