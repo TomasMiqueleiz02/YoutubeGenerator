@@ -45,20 +45,42 @@ class StorageService:
     def _client(self):
         import boto3
 
-        return boto3.client(
-            "s3",
-            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-            region_name=settings.AWS_REGION,
-        )
+        kwargs = {
+            "aws_access_key_id": settings.AWS_ACCESS_KEY_ID,
+            "aws_secret_access_key": settings.AWS_SECRET_ACCESS_KEY,
+            "region_name": settings.AWS_REGION,
+        }
+        # Railway buckets, Cloudflare R2 and MinIO are S3-compatible but live
+        # on their own endpoints rather than amazonaws.com.
+        if settings.AWS_ENDPOINT_URL:
+            kwargs["endpoint_url"] = settings.AWS_ENDPOINT_URL
+        return boto3.client("s3", **kwargs)
 
     def _upload_to_s3(self, source_path: str, key: str) -> str:
-        self._client().upload_file(source_path, settings.S3_BUCKET_NAME, key)
-        return "https://%s.s3.%s.amazonaws.com/%s" % (
+        """Upload and return the object key, not a URL.
+
+        Keys are stable; signed URLs expire, so the key is what belongs in the
+        database. Call presigned_url() to hand a browser a temporary link.
+        """
+        content_type = self._content_type_for(key)
+        self._client().upload_file(
+            source_path,
             settings.S3_BUCKET_NAME,
-            settings.AWS_REGION,
             key,
+            ExtraArgs={"ContentType": content_type} if content_type else None,
         )
+        return key
+
+    @staticmethod
+    def _content_type_for(key: str) -> Optional[str]:
+        lowered = key.lower()
+        if lowered.endswith(".mp4"):
+            return "video/mp4"
+        if lowered.endswith(".jpg") or lowered.endswith(".jpeg"):
+            return "image/jpeg"
+        if lowered.endswith(".png"):
+            return "image/png"
+        return None
 
     def _delete_from_s3(self, key: str) -> bool:
         self._client().delete_object(Bucket=settings.S3_BUCKET_NAME, Key=key)

@@ -80,6 +80,13 @@ class APIClient {
     await this.client.delete(`/clips/${clipId}`);
   }
 
+  async getClipMedia(
+    clipId: string
+  ): Promise<{ video_url: string | null; thumbnail_url: string | null }> {
+    const res = await this.client.get(`/clips/${clipId}/media`);
+    return res.data;
+  }
+
   // Publish
   async publishToTikTok(clipId: string): Promise<{ status: string; post_id: string }> {
     const res = await this.client.post(`/publish/${clipId}/tiktok`);

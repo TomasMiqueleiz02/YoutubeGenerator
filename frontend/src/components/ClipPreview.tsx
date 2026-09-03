@@ -58,7 +58,19 @@ export default function ClipPreview({ video }: Props) {
 
 function ClipCard({ clip, onRefresh }: any) {
   const [publishing, setPublishing] = useState<string | null>(null);
+  const [media, setMedia] = useState<{
+    video_url: string | null;
+    thumbnail_url: string | null;
+  } | null>(null);
   const { updateClip } = useStore();
+
+  useEffect(() => {
+    if (!clip.file_path) return;
+    apiClient
+      .getClipMedia(clip.id)
+      .then(setMedia)
+      .catch(() => setMedia(null));
+  }, [clip.id, clip.file_path]);
 
   const handlePublish = async (platform: "tiktok" | "instagram" | "youtube") => {
     setPublishing(platform);
@@ -86,12 +98,24 @@ function ClipCard({ clip, onRefresh }: any) {
 
   return (
     <div className="bg-gray-800 rounded-lg overflow-hidden border border-gray-700">
-      {clip.thumbnail_path && (
+      {media?.video_url ? (
+        <video
+          src={media.video_url}
+          poster={media.thumbnail_url || undefined}
+          controls
+          preload="metadata"
+          className="w-full h-64 bg-black object-contain"
+        />
+      ) : media?.thumbnail_url ? (
         <img
-          src={clip.thumbnail_path}
+          src={media.thumbnail_url}
           alt={clip.title || "Clip"}
           className="w-full h-48 object-cover"
         />
+      ) : (
+        <div className="w-full h-48 bg-gray-900 flex items-center justify-center text-gray-500 text-sm">
+          {clip.file_path ? "Loading preview..." : "Media not available"}
+        </div>
       )}
       <div className="p-4">
         <h3 className="font-bold mb-2">
@@ -104,7 +128,16 @@ function ClipCard({ clip, onRefresh }: any) {
           </p>
           <p>Audio: {clip.audio_score?.toFixed(0)}% | Video: {clip.video_score?.toFixed(0)}%</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          {media?.video_url && (
+            <a
+              href={media.video_url}
+              download={`clip-${clip.id}.mp4`}
+              className="text-xs bg-orange-600 hover:bg-orange-500 px-2 py-1 rounded"
+            >
+              Download
+            </a>
+          )}
           {!clip.published_platforms?.includes("tiktok") && (
             <button
               onClick={() => handlePublish("tiktok")}

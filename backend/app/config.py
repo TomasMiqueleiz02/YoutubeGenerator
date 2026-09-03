@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     AWS_ACCESS_KEY_ID: str = ""
     AWS_SECRET_ACCESS_KEY: str = ""
     AWS_REGION: str = "us-east-1"
+    # S3-compatible providers (Railway buckets, R2, MinIO) need a custom
+    # endpoint. Leave empty to talk to real AWS S3.
+    AWS_ENDPOINT_URL: str = ""
 
     # yt-dlp: YouTube blocks downloads from datacenter IPs (Railway included)
     # unless requests carry cookies from a logged-in browser session. Export

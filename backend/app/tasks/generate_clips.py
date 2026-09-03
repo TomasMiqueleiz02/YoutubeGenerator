@@ -1,11 +1,12 @@
 import logging
+import os
 from datetime import datetime
 
 from celery import shared_task
 
 from app.database import SessionLocal
 from app.models import Clip, Job, Video
-from app.services import ClipService
+from app.services import ClipService, StorageService
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,7 @@ def generate_clips_task(self, video_id: str):
 
         # Create Clip records
         clip_service = ClipService()
+        storage = StorageService()
         for start_time, end_time, virality_score in clip_boundaries:
             clip = Clip(
                 video_id=video_id,
@@ -79,17 +81,31 @@ def generate_clips_task(self, video_id: str):
                 status="generated",
             )
 
-            # Cut the clip
+            # Cut the clip, then hand it to storage so it outlives this
+            # container. Worker filesystems are ephemeral and not shared with
+            # the API, so a local path alone would leave the clip unreachable.
             try:
-                clip.file_path = clip_service.cut_clip(
+                local_clip = clip_service.cut_clip(
                     video.file_path, clip.id, start_time, end_time, vertical=True
                 )
-                # Generate thumbnail
-                clip.thumbnail_path = clip_service.generate_thumbnail(
-                    clip.file_path, clip.id, at_second=1.0
+                local_thumb = clip_service.generate_thumbnail(
+                    local_clip, clip.id, at_second=1.0
                 )
+
+                clip.file_path = storage.save(local_clip, "clips/%s.mp4" % clip.id)
+                clip.thumbnail_path = storage.save(
+                    local_thumb, "thumbnails/%s.jpg" % clip.id
+                )
+
+                # Local copies are redundant once uploaded to object storage
+                if storage.backend == "s3":
+                    for stale in (local_clip, local_thumb):
+                        try:
+                            os.remove(stale)
+                        except OSError:
+                            pass
             except Exception as e:
-                logger.warning("Could not cut clip %s: %s", clip.id, e)
+                logger.warning("Could not produce clip %s: %s", clip.id, e)
                 clip.file_path = None
                 clip.thumbnail_path = None
 
