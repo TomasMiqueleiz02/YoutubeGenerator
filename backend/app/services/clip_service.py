@@ -21,6 +21,7 @@ class ClipService:
         start_time: float,
         end_time: float,
         vertical: bool = True,
+        subtitles_ass: Optional[str] = None,
     ) -> str:
         """
         Extract [start_time, end_time] from the source video.
@@ -44,8 +45,24 @@ class ClipService:
             "-t", str(duration),
         ]
 
+        filters = []
         if vertical:
-            cmd += ["-vf", "crop=ih*9/16:ih,scale=1080:1920"]
+            filters.append("crop=ih*9/16:ih,scale=1080:1920")
+
+        subtitle_file = None
+        if subtitles_ass:
+            subtitle_file = self._write_subtitle_file(clip_id, subtitles_ass)
+            # ffmpeg parses this filter argument itself, so Windows drive
+            # letters and backslashes have to be escaped for its parser.
+            escaped = (
+                subtitle_file.replace("\\", "/")
+                .replace(":", "\\:")
+                .replace("'", "\\'")
+            )
+            filters.append("subtitles='%s'" % escaped)
+
+        if filters:
+            cmd += ["-vf", ",".join(filters)]
 
         cmd += [
             "-c:v", "libx264",
@@ -57,8 +74,22 @@ class ClipService:
             output_path,
         ]
 
-        self._run(cmd)
+        try:
+            self._run(cmd)
+        finally:
+            if subtitle_file and os.path.exists(subtitle_file):
+                try:
+                    os.remove(subtitle_file)
+                except OSError:
+                    pass
+
         return output_path
+
+    def _write_subtitle_file(self, clip_id: str, content: str) -> str:
+        path = os.path.join(self.output_dir, "%s.ass" % clip_id)
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(content)
+        return path
 
     def generate_thumbnail(
         self, clip_path: str, clip_id: str, at_second: float = 1.0

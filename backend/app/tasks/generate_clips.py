@@ -38,6 +38,7 @@ def generate_clips_task(self, video_id: str):
         from ai_engine import (
             HeuristicMomentFinder,
             MomentFinder,
+            SubtitleGenerator,
             Transcriber,
             VitalityScorer,
         )
@@ -141,8 +142,22 @@ def generate_clips_task(self, video_id: str):
             # container. Worker filesystems are ephemeral and not shared with
             # the API, so a local path alone would leave the clip unreachable.
             try:
+                # Word-timed captions, rebased to this clip's start
+                subtitles = None
+                if transcript and transcript.get("segments"):
+                    subtitles = SubtitleGenerator().build(
+                        segments=transcript["segments"],
+                        clip_start=start_time,
+                        clip_end=end_time,
+                    )
+
                 local_clip = clip_service.cut_clip(
-                    video.file_path, clip.id, start_time, end_time, vertical=True
+                    video.file_path,
+                    clip.id,
+                    start_time,
+                    end_time,
+                    vertical=True,
+                    subtitles_ass=subtitles,
                 )
                 local_thumb = clip_service.generate_thumbnail(
                     local_clip, clip.id, at_second=1.0

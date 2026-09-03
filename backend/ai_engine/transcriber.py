@@ -41,8 +41,9 @@ class Transcriber:
         segments_iter, info = model.transcribe(
             media_path,
             language=self.language,
-            vad_filter=True,  # skip silence, keeps timestamps honest
-            beam_size=1,      # greedy: much faster, accurate enough for clipping
+            vad_filter=True,       # skip silence, keeps timestamps honest
+            beam_size=1,           # greedy: much faster, accurate enough here
+            word_timestamps=True,  # required for word-by-word captions
         )
 
         segments: List[Dict] = []
@@ -50,11 +51,25 @@ class Transcriber:
             text = (segment.text or "").strip()
             if not text:
                 continue
+
+            words = []
+            for word in (getattr(segment, "words", None) or []):
+                token = (word.word or "").strip()
+                if token:
+                    words.append(
+                        {
+                            "start": float(word.start),
+                            "end": float(word.end),
+                            "text": token,
+                        }
+                    )
+
             segments.append(
                 {
                     "start": float(segment.start),
                     "end": float(segment.end),
                     "text": text,
+                    "words": words,
                 }
             )
 
