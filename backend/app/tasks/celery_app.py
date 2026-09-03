@@ -23,4 +23,15 @@ celery_app.conf.update(
     task_time_limit=60 * 60,      # hard limit: 1 hour
     task_soft_time_limit=55 * 60,
     worker_max_tasks_per_child=10,  # release memory held by ML models
+
+    # Acknowledge a task only once it finishes, and requeue it if the worker
+    # dies mid-run. Without this, closing the worker window (or a crash)
+    # silently drops whatever was in flight and the video sits at a partial
+    # percentage forever.
+    task_acks_late=True,
+    task_reject_on_worker_lost=True,
+
+    # One video at a time per worker: analysis is CPU-bound, so overlapping
+    # jobs slow every one of them down rather than finishing any sooner.
+    worker_prefetch_multiplier=1,
 )

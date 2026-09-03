@@ -1,5 +1,9 @@
+import logging
+
 import cv2
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 class VideoAnalyzer:
@@ -86,6 +90,16 @@ class VideoAnalyzer:
             prev_gray = gray
             prev_brightness = brightness
             frame_index += 1
+
+            # This pass is the slowest stage and otherwise silent, which makes
+            # a long video look like a hung job.
+            if self.total_frames and len(timestamps) % 200 == 0:
+                logger.info(
+                    "Video analysis %.0f%% (%d of ~%d frames)",
+                    100.0 * frame_index / self.total_frames,
+                    frame_index,
+                    self.total_frames,
+                )
 
         return (
             np.array(cut_scores),
