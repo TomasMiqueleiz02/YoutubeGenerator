@@ -33,6 +33,7 @@ class ClipResponse(BaseModel):
     status: str
     published_platforms: List[str] = []
     thumbnail_path: Optional[str] = None
+    file_path: Optional[str] = None
     created_at: datetime
     published_at: Optional[datetime] = None
 

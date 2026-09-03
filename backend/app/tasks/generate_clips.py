@@ -1,5 +1,6 @@
 import logging
 import os
+import uuid
 from datetime import datetime
 
 from celery import shared_task
@@ -102,6 +103,10 @@ def generate_clips_task(self, video_id: str):
         storage = StorageService()
         for start_time, end_time, virality_score in clip_boundaries:
             clip = Clip(
+                # Assign the id up front: the column default only fires on
+                # insert, and the id names the stored files. Without this every
+                # clip is written as "None.mp4" and they overwrite each other.
+                id=str(uuid.uuid4()),
                 video_id=video_id,
                 start_time=start_time,
                 end_time=end_time,
