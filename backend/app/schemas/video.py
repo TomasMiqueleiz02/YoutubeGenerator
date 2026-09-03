@@ -1,10 +1,10 @@
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
 
 
 class VideoCreate(BaseModel):
-    youtube_url: HttpUrl
+    youtube_url: str
 
 
 class VideoUpdate(BaseModel):
