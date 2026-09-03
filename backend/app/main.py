@@ -5,10 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
 from app.config import settings
-from app.database import Base, engine
+from app.database import engine
 from app.routes import auth, clips, publish, videos
-
-Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="YouTube AI Clip Generator",
