@@ -4,6 +4,7 @@ from datetime import datetime
 
 from celery import shared_task
 
+from app.config import settings
 from app.database import SessionLocal
 from app.models import Clip, Job, Video
 from app.services import ClipService, StorageService
@@ -33,18 +34,47 @@ def generate_clips_task(self, video_id: str):
 
         import numpy as np
 
-        from ai_engine import VitalityScorer
+        from ai_engine import MomentFinder, Transcriber, VitalityScorer
 
-        # Combine scores
-        scorer = VitalityScorer()
-        combined = scorer.calculate_combined_score(
-            np.array(audio_scores),
-            np.array(video_scores),
-            np.array(content_scores),
-        )
+        # Preferred path: let a language model read the transcript and choose
+        # moments by what is being said. Energy heuristics find loud, not
+        # interesting, so they are the fallback rather than the default.
+        clip_boundaries = []
+        moment_details = {}
 
-        # Find clip boundaries
-        clip_boundaries = scorer.detect_clip_boundaries(combined, video.duration_seconds)
+        transcript = (video.video_metadata or {}).get("transcript")
+        if transcript and transcript.get("segments"):
+            finder = MomentFinder(model=settings.ANTHROPIC_MODEL)
+            moments = finder.find(
+                transcript_text=Transcriber.to_timestamped_text(transcript),
+                video_duration=video.duration_seconds or 0,
+                video_title=video.title,
+            )
+            for moment in moments:
+                clip_boundaries.append(
+                    (moment["start"], moment["end"], float(moment["score"]))
+                )
+                moment_details[(moment["start"], moment["end"])] = moment
+
+            if moments:
+                logger.info(
+                    "Selected %d moments semantically for video %s",
+                    len(moments),
+                    video_id,
+                )
+
+        # Fallback: audio/video energy peaks
+        if not clip_boundaries:
+            logger.info("Falling back to signal-based detection for %s", video_id)
+            scorer = VitalityScorer()
+            combined = scorer.calculate_combined_score(
+                np.array(audio_scores),
+                np.array(video_scores),
+                np.array(content_scores),
+            )
+            clip_boundaries = scorer.detect_clip_boundaries(
+                combined, video.duration_seconds
+            )
 
         if not clip_boundaries:
             logger.warning("No viral moments detected in video %s", video_id)
@@ -80,6 +110,13 @@ def generate_clips_task(self, video_id: str):
                 ),
                 status="generated",
             )
+
+            # Carry across the title and rationale when the model picked this
+            # moment, so the user sees why it was chosen.
+            detail = moment_details.get((start_time, end_time))
+            if detail:
+                clip.title = detail["title"]
+                clip.caption = detail["hook"]
 
             # Cut the clip, then hand it to storage so it outlives this
             # container. Worker filesystems are ephemeral and not shared with

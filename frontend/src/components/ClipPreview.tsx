@@ -118,10 +118,14 @@ function ClipCard({ clip, onRefresh }: any) {
         </div>
       )}
       <div className="p-4">
-        <h3 className="font-bold mb-2">
-          {clip.start_time.toFixed(1)}s - {clip.end_time.toFixed(1)}s
-        </h3>
-        {clip.title && <p className="text-sm mb-2">{clip.title}</p>}
+        {clip.title && <h3 className="font-bold mb-1">{clip.title}</h3>}
+        <p className="text-xs text-gray-400 mb-2">
+          {clip.start_time.toFixed(0)}s - {clip.end_time.toFixed(0)}s (
+          {Math.round(clip.duration)}s)
+        </p>
+        {clip.caption && (
+          <p className="text-sm text-gray-300 mb-2 italic">"{clip.caption}"</p>
+        )}
         <div className="mb-3 space-y-1 text-sm">
           <p>
             Virality: <span className="font-bold text-orange-400">{clip.virality_score?.toFixed(0)}%</span>

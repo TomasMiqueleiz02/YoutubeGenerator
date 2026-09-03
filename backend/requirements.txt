@@ -23,3 +23,7 @@ aiofiles==23.2.1
 python-dotenv==1.0.0
 loguru==0.7.2
 boto3==1.28.85
+
+# Semantic clip selection: transcription + LLM moment picking
+anthropic
+faster-whisper

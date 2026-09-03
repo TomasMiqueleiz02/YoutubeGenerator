@@ -40,6 +40,12 @@ class Settings(BaseSettings):
     # full contents into this variable.
     YTDLP_COOKIES_CONTENT: str = ""
 
+    # Semantic clip selection. Without a key the pipeline falls back to
+    # audio/video energy heuristics, which find noise rather than meaning.
+    ANTHROPIC_API_KEY: str = ""
+    ANTHROPIC_MODEL: str = "claude-opus-5"
+    WHISPER_MODEL_SIZE: str = "base"
+
     # Social APIs
     TIKTOK_CLIENT_KEY: str = ""
     TIKTOK_CLIENT_SECRET: str = ""

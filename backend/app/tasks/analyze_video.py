@@ -59,11 +59,47 @@ def analyze_video_task(self, video_id: str):
 
             logger.info("Finished %s for video %s", task_type, video_id)
 
+        # Transcribe so clip selection can read what is actually said, rather
+        # than inferring interest from loudness and motion alone.
+        transcript = None
+        try:
+            from ai_engine import Transcriber
+            from app.config import settings as app_settings
+
+            job = Job(
+                video_id=video_id,
+                task_type="transcribe",
+                status="processing",
+                started_at=datetime.utcnow(),
+            )
+            db.add(job)
+            db.commit()
+            jobs["transcribe"] = job
+
+            transcript = Transcriber(
+                model_size=app_settings.WHISPER_MODEL_SIZE
+            ).transcribe(video.file_path)
+
+            job.status = "completed"
+            job.completed_at = datetime.utcnow()
+            db.commit()
+            logger.info(
+                "Transcribed video %s: %d segments",
+                video_id,
+                len(transcript.get("segments", [])),
+            )
+        except Exception:
+            logger.exception("Transcription failed for %s; continuing without it", video_id)
+            if "transcribe" in jobs:
+                jobs["transcribe"].status = "failed"
+                db.commit()
+
         video.video_metadata = {
             **(video.video_metadata or {}),
             "audio_scores": scores["analyze_audio"].tolist(),
             "video_scores": scores["analyze_video"].tolist(),
             "content_scores": scores["analyze_content"].tolist(),
+            "transcript": transcript,
         }
         video.status = "analyzed"
         video.processing_progress = 65
