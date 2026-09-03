@@ -1,0 +1,25 @@
+# Dependencies for running the worker on a local machine.
+#
+# requirements.txt pins versions for the container's Python 3.11. Those pins
+# predate Python 3.12/3.13 and have no prebuilt wheels there, so they try to
+# compile from source and fail. This file leaves the scientific stack unpinned
+# so pip resolves whatever is current for the local interpreter.
+
+sqlalchemy>=2.0
+psycopg2-binary>=2.9.9
+pydantic>=2.5
+pydantic-settings>=2.1
+celery>=5.3
+redis>=5.0
+yt-dlp
+opencv-python
+librosa
+numpy
+scipy
+scikit-learn
+requests
+python-dotenv
+loguru
+boto3
+faster-whisper
+anthropic
