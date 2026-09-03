@@ -2,6 +2,10 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# The celery console script puts its own bin dir on sys.path, not the
+# working directory, so top-level packages like ai_engine need this.
+ENV PYTHONPATH=/app
+
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     curl \

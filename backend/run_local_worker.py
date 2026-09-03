@@ -11,8 +11,38 @@ Stop:   Ctrl+C  (queued videos stay queued and resume next run)
 """
 
 import os
+import shutil
 import sys
 from pathlib import Path
+
+
+def ensure_ffmpeg() -> None:
+    """
+    Make sure ffmpeg is callable, adding it to PATH if needed.
+
+    A fresh winget install writes ffmpeg to PATH, but only for shells started
+    afterwards. Rather than making the user reboot a terminal, find the
+    executable and put its directory on this process's PATH.
+    """
+    if shutil.which("ffmpeg"):
+        return
+
+    candidates = []
+    local = os.environ.get("LOCALAPPDATA")
+    if local:
+        candidates.append(Path(local) / "Microsoft" / "WinGet" / "Packages")
+    for root in candidates:
+        if not root.exists():
+            continue
+        for exe in root.rglob("ffmpeg.exe"):
+            os.environ["PATH"] = str(exe.parent) + os.pathsep + os.environ.get("PATH", "")
+            print("Found ffmpeg at %s" % exe)
+            return
+
+    print(
+        "WARNING: ffmpeg not found. Clip cutting and audio analysis will fail.\n"
+        "         Install it with:  winget install Gyan.FFmpeg"
+    )
 
 
 def load_env(path: Path) -> int:
@@ -43,6 +73,8 @@ def main() -> None:
     os.environ["PYTHONPATH"] = (
         str(here) + (os.pathsep + existing if existing else "")
     )
+
+    ensure_ffmpeg()
 
     count = load_env(here / ".env.local")
     print("Loaded %d settings from .env.local" % count)
