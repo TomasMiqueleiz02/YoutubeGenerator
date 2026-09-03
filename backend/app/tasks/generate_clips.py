@@ -36,6 +36,7 @@ def generate_clips_task(self, video_id: str):
         import numpy as np
 
         from ai_engine import (
+            FaceTracker,
             HeuristicMomentFinder,
             MomentFinder,
             SubtitleGenerator,
@@ -102,6 +103,7 @@ def generate_clips_task(self, video_id: str):
         # Create Clip records
         clip_service = ClipService()
         storage = StorageService()
+        face_tracker = FaceTracker()
         for start_time, end_time, virality_score in clip_boundaries:
             clip = Clip(
                 # Assign the id up front: the column default only fires on
@@ -151,6 +153,17 @@ def generate_clips_task(self, video_id: str):
                         clip_end=end_time,
                     )
 
+                # Frame the vertical crop on whoever is talking, instead of
+                # blindly taking the middle column of the shot.
+                crop = None
+                try:
+                    center = face_tracker.find_crop_center(
+                        video.file_path, start_time, end_time
+                    )
+                    crop = FaceTracker.crop_filter(center)
+                except Exception:
+                    logger.warning("Face tracking failed; using centre crop", exc_info=True)
+
                 local_clip = clip_service.cut_clip(
                     video.file_path,
                     clip.id,
@@ -158,6 +171,7 @@ def generate_clips_task(self, video_id: str):
                     end_time,
                     vertical=True,
                     subtitles_ass=subtitles,
+                    crop_filter=crop,
                 )
                 local_thumb = clip_service.generate_thumbnail(
                     local_clip, clip.id, at_second=1.0

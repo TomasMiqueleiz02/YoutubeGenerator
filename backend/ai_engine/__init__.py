@@ -6,6 +6,7 @@ from .transcriber import Transcriber
 from .moment_finder import MomentFinder
 from .heuristic_moment_finder import HeuristicMomentFinder
 from .subtitle_generator import SubtitleGenerator, SubtitleStyle
+from .face_tracker import FaceTracker
 
 __all__ = [
     "AudioAnalyzer",
@@ -17,4 +18,5 @@ __all__ = [
     "HeuristicMomentFinder",
     "SubtitleGenerator",
     "SubtitleStyle",
+    "FaceTracker",
 ]

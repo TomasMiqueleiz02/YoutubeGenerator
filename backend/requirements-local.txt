@@ -12,7 +12,9 @@ pydantic-settings>=2.1
 celery>=5.3
 redis>=5.0
 yt-dlp
-opencv-python
+# Pin under 5.x: OpenCV 5 dropped CascadeClassifier, which the face
+# tracker uses to keep the speaker inside the vertical crop.
+opencv-python<5
 librosa
 numpy
 scipy

@@ -22,6 +22,7 @@ class ClipService:
         end_time: float,
         vertical: bool = True,
         subtitles_ass: Optional[str] = None,
+        crop_filter: Optional[str] = None,
     ) -> str:
         """
         Extract [start_time, end_time] from the source video.
@@ -47,7 +48,7 @@ class ClipService:
 
         filters = []
         if vertical:
-            filters.append("crop=ih*9/16:ih,scale=1080:1920")
+            filters.append(crop_filter or "crop=ih*9/16:ih,scale=1080:1920")
 
         subtitle_file = None
         if subtitles_ass:
