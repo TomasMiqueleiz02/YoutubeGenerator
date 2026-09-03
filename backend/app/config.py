@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     AWS_SECRET_ACCESS_KEY: str = ""
     AWS_REGION: str = "us-east-1"
 
+    # yt-dlp: YouTube blocks downloads from datacenter IPs (Railway included)
+    # unless requests carry cookies from a logged-in browser session. Export
+    # cookies.txt (Netscape format) from a real YouTube session and paste its
+    # full contents into this variable.
+    YTDLP_COOKIES_CONTENT: str = ""
+
     # Social APIs
     TIKTOK_CLIENT_KEY: str = ""
     TIKTOK_CLIENT_SECRET: str = ""
