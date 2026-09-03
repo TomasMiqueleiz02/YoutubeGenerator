@@ -6,6 +6,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
 from app.config import settings
 from app.database import engine
+from app.models import Base
 from app.routes import auth, clips, publish, videos
 
 app = FastAPI(
@@ -26,6 +27,17 @@ app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+@app.on_event("startup")
+def create_tables():
+    """Create tables on startup. Runs after the DB is reachable, unlike a
+    module-level call which would crash the process on transient DB errors."""
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception:
+        logger.exception("Could not create database tables on startup")
+
 
 app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
 app.include_router(videos.router, prefix="/api/videos", tags=["Videos"])
