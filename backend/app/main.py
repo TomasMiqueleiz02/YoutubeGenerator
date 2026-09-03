@@ -1,7 +1,7 @@
 import logging
 
 from fastapi import FastAPI
-from fastapi.cors import CORSMiddleware
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
 from app.config import settings
