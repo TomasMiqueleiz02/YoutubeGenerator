@@ -34,34 +34,48 @@ def generate_clips_task(self, video_id: str):
 
         import numpy as np
 
-        from ai_engine import MomentFinder, Transcriber, VitalityScorer
+        from ai_engine import (
+            HeuristicMomentFinder,
+            MomentFinder,
+            Transcriber,
+            VitalityScorer,
+        )
 
-        # Preferred path: let a language model read the transcript and choose
-        # moments by what is being said. Energy heuristics find loud, not
-        # interesting, so they are the fallback rather than the default.
+        # Selection runs on the transcript, so clips are chosen by what is
+        # said rather than how loud it gets. Three tiers, best first.
         clip_boundaries = []
         moment_details = {}
+        moments = []
 
         transcript = (video.video_metadata or {}).get("transcript")
         if transcript and transcript.get("segments"):
+            # Tier 1: a language model, only when a key is configured
             finder = MomentFinder(model=settings.ANTHROPIC_MODEL)
-            moments = finder.find(
-                transcript_text=Transcriber.to_timestamped_text(transcript),
-                video_duration=video.duration_seconds or 0,
-                video_title=video.title,
-            )
+            if finder.available:
+                moments = finder.find(
+                    transcript_text=Transcriber.to_timestamped_text(transcript),
+                    video_duration=video.duration_seconds or 0,
+                    video_title=video.title,
+                )
+                if moments:
+                    logger.info("Selected %d moments via LLM for %s", len(moments), video_id)
+
+            # Tier 2: free text heuristics over the same transcript
+            if not moments:
+                moments = HeuristicMomentFinder().find(
+                    transcript=transcript,
+                    video_duration=video.duration_seconds or 0,
+                )
+                if moments:
+                    logger.info(
+                        "Selected %d moments heuristically for %s", len(moments), video_id
+                    )
+
             for moment in moments:
                 clip_boundaries.append(
                     (moment["start"], moment["end"], float(moment["score"]))
                 )
                 moment_details[(moment["start"], moment["end"])] = moment
-
-            if moments:
-                logger.info(
-                    "Selected %d moments semantically for video %s",
-                    len(moments),
-                    video_id,
-                )
 
         # Fallback: audio/video energy peaks
         if not clip_boundaries:
