@@ -1,7 +1,7 @@
 import os
 import re
 import tempfile
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 from urllib.parse import urlparse, parse_qs
 
 import yt_dlp
@@ -41,6 +41,60 @@ class YouTubeService:
             opts["cookiefile"] = self._cookies_path
         return opts
 
+    def _strategies(self) -> List[Dict]:
+        """
+        Extraction strategies tried in order until one yields formats.
+
+        YouTube blocks its own player clients in different ways over time and
+        by requesting IP, so no single client stays reliable. Some clients also
+        reject cookies, so cookie-less variants are included as fallbacks.
+        """
+        clients = [
+            "default",
+            "web_safari",
+            "mweb",
+            "tv",
+            "ios",
+            "android",
+        ]
+
+        strategies: List[Dict] = []
+        for client in clients:
+            # With cookies (authenticated session)
+            if self._cookies_path:
+                opts = self._base_opts()
+                if client != "default":
+                    opts["extractor_args"] = {"youtube": {"player_client": [client]}}
+                strategies.append(opts)
+            # Without cookies: some clients refuse authenticated requests
+            plain: Dict = {"quiet": True, "no_warnings": True}
+            if client != "default":
+                plain["extractor_args"] = {"youtube": {"player_client": [client]}}
+            strategies.append(plain)
+        return strategies
+
+    def _extract(self, url: str, extra_opts: Dict, download: bool):
+        """
+        Run extract_info against each strategy, returning the first success.
+
+        Raises the last error if every strategy fails, so the caller still
+        sees a real YouTube message rather than a generic failure.
+        """
+        last_error: Optional[Exception] = None
+
+        for strategy in self._strategies():
+            opts = {**strategy, **extra_opts}
+            try:
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    info = ydl.extract_info(url, download=download)
+                if info:
+                    return info, ydl
+            except Exception as exc:  # noqa: BLE001 - try the next strategy
+                last_error = exc
+                continue
+
+        raise last_error or RuntimeError("yt-dlp could not extract %s" % url)
+
     def extract_video_id(self, url: str) -> str:
         """Extract the 11-character YouTube video id from any common URL form."""
         parsed = urlparse(url)
@@ -68,10 +122,7 @@ class YouTubeService:
     def get_video_metadata(self, video_id: str) -> Dict:
         """Fetch title, channel, duration and thumbnail without downloading."""
         url = "https://www.youtube.com/watch?v=%s" % video_id
-        opts = {**self._base_opts(), "skip_download": True}
-
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=False)
+        info, _ = self._extract(url, {"skip_download": True}, download=False)
 
         return {
             "title": info.get("title") or "Untitled",
@@ -91,17 +142,15 @@ class YouTubeService:
         video_id = video_id or self.extract_video_id(str(youtube_url))
         output_template = os.path.join(self.download_dir, "%s.%%(ext)s" % video_id)
 
-        opts = {
-            **self._base_opts(),
-            "format": "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
+        extra_opts = {
+            "format": "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
             "merge_output_format": "mp4",
             "outtmpl": output_template,
             "noprogress": True,
         }
 
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(str(youtube_url), download=True)
-            file_path = ydl.prepare_filename(info)
+        info, ydl = self._extract(str(youtube_url), extra_opts, download=True)
+        file_path = ydl.prepare_filename(info)
 
         # yt-dlp reports the pre-merge extension, so prefer the merged mp4
         merged = os.path.splitext(file_path)[0] + ".mp4"
