@@ -31,6 +31,13 @@ celery_app.conf.update(
     task_acks_late=True,
     task_reject_on_worker_lost=True,
 
+    # How long Redis waits before deciding a claimed task was abandoned and
+    # handing it to another worker. The default is an hour, which means a
+    # killed worker leaves a video frozen mid-progress for that long. Five
+    # minutes recovers quickly while still exceeding any single task step.
+    broker_transport_options={"visibility_timeout": 300},
+    result_backend_transport_options={"visibility_timeout": 300},
+
     # One video at a time per worker: analysis is CPU-bound, so overlapping
     # jobs slow every one of them down rather than finishing any sooner.
     worker_prefetch_multiplier=1,
