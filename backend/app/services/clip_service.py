@@ -46,9 +46,10 @@ class ClipService:
             "-t", str(duration),
         ]
 
-        filters = []
-        if vertical:
-            filters.append(crop_filter or "crop=ih*9/16:ih,scale=1080:1920")
+        # The blurred-background layout needs two streams composited together,
+        # which only -filter_complex can express, so the whole chain is built
+        # that way and -vf is no longer used.
+        chain = crop_filter or "[0:v]crop=ih*9/16:ih,scale=1080:1920"
 
         subtitle_file = None
         if subtitles_ass:
@@ -60,10 +61,10 @@ class ClipService:
                 .replace(":", "\\:")
                 .replace("'", "\\'")
             )
-            filters.append("subtitles='%s'" % escaped)
+            chain += ",subtitles='%s'" % escaped
 
-        if filters:
-            cmd += ["-vf", ",".join(filters)]
+        if vertical:
+            cmd += ["-filter_complex", chain + "[v]", "-map", "[v]", "-map", "0:a?"]
 
         cmd += [
             "-c:v", "libx264",

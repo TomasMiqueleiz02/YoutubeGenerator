@@ -37,9 +37,11 @@ def generate_clips_task(self, video_id: str):
 
         from ai_engine import (
             FaceTracker,
+            VideoLayout,
             HeuristicMomentFinder,
             MomentFinder,
             SubtitleGenerator,
+            SubtitleStyle,
             Transcriber,
             VitalityScorer,
         )
@@ -104,6 +106,9 @@ def generate_clips_task(self, video_id: str):
         clip_service = ClipService()
         storage = StorageService()
         face_tracker = FaceTracker()
+        # Keep the whole frame by default: cropping to a column loses
+        # whatever the subject was reacting to, which is often the point.
+        layout = VideoLayout(mode=settings.CLIP_LAYOUT)
         for start_time, end_time, virality_score in clip_boundaries:
             clip = Clip(
                 # Assign the id up front: the column default only fires on
@@ -147,7 +152,9 @@ def generate_clips_task(self, video_id: str):
                 # Word-timed captions, rebased to this clip's start
                 subtitles = None
                 if transcript and transcript.get("segments"):
-                    subtitles = SubtitleGenerator().build(
+                    subtitles = SubtitleGenerator(
+                        SubtitleStyle(margin_vertical=layout.caption_margin)
+                    ).build(
                         segments=transcript["segments"],
                         clip_start=start_time,
                         clip_end=end_time,
@@ -155,14 +162,15 @@ def generate_clips_task(self, video_id: str):
 
                 # Frame the vertical crop on whoever is talking, instead of
                 # blindly taking the middle column of the shot.
-                crop = None
-                try:
-                    center = face_tracker.find_crop_center(
-                        video.file_path, start_time, end_time
-                    )
-                    crop = FaceTracker.crop_filter(center)
-                except Exception:
-                    logger.warning("Face tracking failed; using centre crop", exc_info=True)
+                center = None
+                if layout.mode == VideoLayout.CROP:
+                    try:
+                        center = face_tracker.find_crop_center(
+                            video.file_path, start_time, end_time
+                        )
+                    except Exception:
+                        logger.warning("Face tracking failed", exc_info=True)
+                crop = layout.filter_complex(center)
 
                 local_clip = clip_service.cut_clip(
                     video.file_path,

@@ -7,6 +7,7 @@ from .moment_finder import MomentFinder
 from .heuristic_moment_finder import HeuristicMomentFinder
 from .subtitle_generator import SubtitleGenerator, SubtitleStyle
 from .face_tracker import FaceTracker
+from .video_layout import VideoLayout
 
 __all__ = [
     "AudioAnalyzer",
@@ -19,4 +20,5 @@ __all__ = [
     "SubtitleGenerator",
     "SubtitleStyle",
     "FaceTracker",
+    "VideoLayout",
 ]

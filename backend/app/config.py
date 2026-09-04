@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     ANTHROPIC_MODEL: str = "claude-opus-5"
     WHISPER_MODEL_SIZE: str = "base"
 
+    # "fit" keeps the entire frame over a blurred backdrop; "crop"
+    # fills the screen with a vertical slice and discards the rest.
+    CLIP_LAYOUT: str = "fit"
+
     # Social APIs
     TIKTOK_CLIENT_KEY: str = ""
     TIKTOK_CLIENT_SECRET: str = ""
