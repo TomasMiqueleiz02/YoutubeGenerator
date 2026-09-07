@@ -35,7 +35,10 @@ async def create_video(
                 detail="Video already exists for this user",
             )
 
-        metadata = yt_service.get_video_metadata(video_id)
+        # oEmbed rather than yt-dlp: the API runs on a datacenter IP where
+        # YouTube's bot check blocks extraction. Duration arrives later,
+        # filled in by the worker that actually downloads the file.
+        metadata = yt_service.get_basic_metadata(video_id)
 
         db_video = Video(
             id=str(uuid.uuid4()),

@@ -39,6 +39,18 @@ def download_video_task(self, video_id: str):
         file_path = service.download_video(video.youtube_url, video.youtube_video_id)
 
         video.file_path = file_path
+
+        # The API could only get title and channel from oEmbed, so the
+        # real duration is measured here from the downloaded file.
+        if not video.duration_seconds:
+            try:
+                from app.services import ClipService
+
+                video.duration_seconds = int(
+                    ClipService().probe_duration(file_path)
+                )
+            except Exception:
+                logger.warning('Could not probe duration', exc_info=True)
         video.status = "downloaded"
         video.processing_progress = 20
         job.status = "completed"

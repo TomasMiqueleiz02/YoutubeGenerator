@@ -119,6 +119,35 @@ class YouTubeService:
 
         raise ValueError("Could not extract a YouTube video id from: %s" % url)
 
+    def get_basic_metadata(self, video_id: str) -> Dict:
+        """
+        Title, channel and thumbnail from YouTube's public oEmbed endpoint.
+
+        The API server runs on a datacenter IP, where yt-dlp is blocked by bot
+        detection. oEmbed is a plain public endpoint with no such check, so
+        adding a video no longer depends on cookies that expire. Duration is
+        not exposed here; the worker fills it in when it downloads.
+        """
+        import requests
+
+        response = requests.get(
+            "https://www.youtube.com/oembed",
+            params={
+                "url": "https://www.youtube.com/watch?v=%s" % video_id,
+                "format": "json",
+            },
+            timeout=10,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        return {
+            "title": data.get("title") or "Untitled",
+            "channel": data.get("author_name") or "Unknown",
+            "thumbnail": "https://i.ytimg.com/vi/%s/hqdefault.jpg" % video_id,
+            "duration": 0,
+        }
+
     def get_video_metadata(self, video_id: str) -> Dict:
         """Fetch title, channel, duration and thumbnail without downloading."""
         url = "https://www.youtube.com/watch?v=%s" % video_id
