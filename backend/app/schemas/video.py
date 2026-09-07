@@ -5,6 +5,15 @@ from datetime import datetime
 
 class VideoCreate(BaseModel):
     youtube_url: str
+    # Spans worth clipping, [[start, end], ...] in seconds. Empty or absent
+    # means the whole video, which is how every upload worked before.
+    ranges: Optional[List[List[float]]] = None
+
+
+class VideoReprocess(BaseModel):
+    """Re-run analysis on a video already downloaded, with new spans."""
+
+    ranges: Optional[List[List[float]]] = None
 
 
 class VideoUpdate(BaseModel):
@@ -19,6 +28,7 @@ class VideoResponse(BaseModel):
     channel_name: Optional[str] = None
     duration_seconds: Optional[int] = None
     status: str
+    clip_ranges: Optional[List[List[float]]] = None
     processing_progress: float
     thumbnail_url: Optional[str] = None
     created_at: datetime

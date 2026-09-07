@@ -39,6 +39,7 @@ def generate_clips_task(self, video_id: str):
 
         import numpy as np
 
+        from app import time_ranges
         from ai_engine import (
             CaptionWriter,
             FaceTracker,
@@ -51,6 +52,33 @@ def generate_clips_task(self, video_id: str):
             Transcriber,
             VitalityScorer,
         )
+
+        ranges = time_ranges.normalize(video.clip_ranges, video.duration_seconds)
+
+        def within_marked_spans(boundaries):
+            """
+            Drop moments that fall outside the spans marked for clipping.
+
+            A moment counts as inside when its middle is, rather than the
+            whole of it: the payoff often runs a few seconds past where
+            someone stopped dragging the marker, and cutting that off would
+            be worse than letting the clip spill over the edge. A moment that
+            merely grazes the span is not kept.
+            """
+            if not ranges:
+                return boundaries
+
+            kept = [
+                b for b in boundaries
+                if time_ranges.covers(ranges, (b[0] + b[1]) / 2.0)
+            ]
+            if len(kept) != len(boundaries):
+                logger.info(
+                    "Dropped %d moment(s) outside %s",
+                    len(boundaries) - len(kept),
+                    time_ranges.describe(ranges),
+                )
+            return kept
 
         # Selection runs on the transcript, so clips are chosen by what is
         # said rather than how loud it gets. Three tiers, best first.
@@ -121,6 +149,8 @@ def generate_clips_task(self, video_id: str):
                 )
                 moment_details[(moment["start"], moment["end"])] = moment
 
+            clip_boundaries = within_marked_spans(clip_boundaries)
+
         # Fallback: audio/video energy peaks
         if not clip_boundaries:
             logger.info("Falling back to signal-based detection for %s", video_id)
@@ -130,8 +160,8 @@ def generate_clips_task(self, video_id: str):
                 np.array(video_scores),
                 np.array(content_scores),
             )
-            clip_boundaries = scorer.detect_clip_boundaries(
-                combined, video.duration_seconds
+            clip_boundaries = within_marked_spans(
+                scorer.detect_clip_boundaries(combined, video.duration_seconds)
             )
 
         if not clip_boundaries:

@@ -83,23 +83,40 @@ class Transcriber:
                 )
         return self._model
 
-    def transcribe(self, media_path: str) -> Dict:
+    def transcribe(self, media_path: str, ranges=None) -> Dict:
         """
         Return the transcript as segments with start/end timestamps.
 
         Shape: {"language": str, "duration": float, "segments": [
             {"start": float, "end": float, "text": str}, ...
         ]}
-        """
-        model = self._load()
 
-        segments_iter, info = model.transcribe(
-            media_path,
-            language=self.language,
-            vad_filter=True,       # skip silence, keeps timestamps honest
-            beam_size=1,           # greedy: much faster, accurate enough here
-            word_timestamps=True,  # required for word-by-word captions
-        )
+        `ranges` limits the work to the spans marked as worth clipping.
+        Timestamps stay absolute either way, so nothing downstream has to
+        know whether the whole video was transcribed or part of it.
+        """
+        from app import time_ranges
+
+        model = self._load()
+        spans = time_ranges.normalize(ranges)
+
+        options = {
+            "language": self.language,
+            "beam_size": 1,           # greedy: much faster, accurate enough here
+            "word_timestamps": True,  # required for word-by-word captions
+        }
+
+        if spans:
+            # Whisper ignores the voice-activity filter once it is given
+            # explicit spans, which is a fair trade: a marked span is short
+            # and chosen for having something in it, so there is little
+            # silence left to skip.
+            options["clip_timestamps"] = time_ranges.to_clip_timestamps(spans)
+            logger.info("Transcribing only %s", time_ranges.describe(spans))
+        else:
+            options["vad_filter"] = True  # skip silence, keeps timestamps honest
+
+        segments_iter, info = model.transcribe(media_path, **options)
 
         segments: List[Dict] = []
         for segment in segments_iter:

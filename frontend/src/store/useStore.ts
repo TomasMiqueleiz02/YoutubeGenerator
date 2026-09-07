@@ -14,6 +14,7 @@ interface StoreState {
   setToken: (token: string | null) => void;
   setVideos: (videos: Video[]) => void;
   addVideo: (video: Video) => void;
+  updateVideo: (video: Video) => void;
   setClips: (clips: Clip[]) => void;
   addClip: (clip: Clip) => void;
   updateClip: (clip: Clip) => void;
@@ -44,6 +45,12 @@ export const useStore = create<StoreState>((set) => ({
   },
   setVideos: (videos) => set({ videos }),
   addVideo: (video) => set((state) => ({ videos: [video, ...state.videos] })),
+  updateVideo: (video) =>
+    set((state) => ({
+      videos: state.videos.map((v) => (v.id === video.id ? video : v)),
+      selectedVideo:
+        state.selectedVideo?.id === video.id ? video : state.selectedVideo,
+    })),
   setClips: (clips) => set({ clips }),
   addClip: (clip) => set((state) => ({ clips: [clip, ...state.clips] })),
   updateClip: (clip) =>

@@ -161,39 +161,15 @@ class CaptionWriter:
         title = re.sub(r"#\w+", "", title)
         # Emoji and pictographs, which read as filler in a caption
         title = re.sub(
-            "[\U0001F300-\U0001FAFF\U00002600-\U000027BF\U0001F900-\U0001F9FF]",
-            "",
-            title,
-        )
-        return re.sub(r"\s{2,}", " ", title).strip()[:150]
-
-
-    @staticmethod
-    def _clean_title(title: str, tags: List[str], seen: set) -> str:
-        """
-        Strip what the model was told to keep out of the caption line.
-
-        A 7B model follows the shape of the schema but not every instruction:
-        it drops hashtags and emoji into the title anyway. Removing them here
-        is deterministic, and any hashtag it buried there is worth keeping in
-        the tag list rather than discarding.
-        """
-        import re
-
-        for match in re.findall(r"#(\w+)", title):
-            lowered = match.lower()
-            if lowered not in seen and len(tags) < 6:
-                seen.add(lowered)
-                tags.append(lowered)
-
-        title = re.sub(r"#\w+", "", title)
-        # Emoji and pictographs, which read as filler in a caption
-        title = re.sub(
             "[🌀-🫿☀-➿🤀-🧿]",
             "",
             title,
         )
-        return re.sub(r"\s{2,}", " ", title).strip()[:150]
+        title = re.sub(r"\s{2,}", " ", title).strip()
+        # Pulling an emoji or a hashtag off the front leaves the punctuation
+        # that followed it, so captions arrived reading ".Chat just gave me
+        # iron". Trim what no sentence starts with.
+        return title.lstrip(".,;:!?-–—·*\"' ")[:150]
 
     @staticmethod
     def format_for_post(caption: Dict) -> str:

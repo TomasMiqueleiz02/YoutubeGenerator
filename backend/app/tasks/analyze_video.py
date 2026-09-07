@@ -27,14 +27,28 @@ def analyze_video_task(self, video_id: str):
         # Imported lazily so the web process never loads the ML stack
         from ai_engine import AudioAnalyzer, ContentAnalyzer, VideoAnalyzer
 
+        from app import time_ranges
+
+        ranges = time_ranges.normalize(video.clip_ranges, video.duration_seconds)
+        if ranges:
+            logger.info(
+                "Analyzing only the marked spans of %s: %s",
+                video_id,
+                time_ranges.describe(ranges),
+            )
+
+        # Only the frame pass is told about the spans. It is the slow stage,
+        # and seeking past what nobody asked for is where the time is saved;
+        # the two audio passes are cheap enough that masking their output
+        # afterwards is simpler than teaching them to skip.
         analyzers = [
-            ("analyze_audio", AudioAnalyzer, 30),
-            ("analyze_video", VideoAnalyzer, 45),
-            ("analyze_content", ContentAnalyzer, 60),
+            ("analyze_audio", AudioAnalyzer, 30, {}),
+            ("analyze_video", VideoAnalyzer, 45, {"ranges": ranges}),
+            ("analyze_content", ContentAnalyzer, 60, {}),
         ]
 
         scores = {}
-        for task_type, analyzer_cls, progress in analyzers:
+        for task_type, analyzer_cls, progress, options in analyzers:
             job = Job(
                 video_id=video_id,
                 task_type=task_type,
@@ -45,8 +59,10 @@ def analyze_video_task(self, video_id: str):
             db.commit()
             jobs[task_type] = job
 
-            analyzer = analyzer_cls(video.file_path)
-            scores[task_type] = analyzer.analyze()
+            analyzer = analyzer_cls(video.file_path, **options)
+            # Flatten everything outside the spans so a fallback hunting for
+            # peaks cannot land on a part of the video nobody marked.
+            scores[task_type] = time_ranges.mask(analyzer.analyze(), ranges)
 
             release = getattr(analyzer, "release", None)
             if callable(release):
@@ -78,7 +94,7 @@ def analyze_video_task(self, video_id: str):
 
             transcript = Transcriber(
                 model_size=app_settings.WHISPER_MODEL_SIZE
-            ).transcribe(video.file_path)
+            ).transcribe(video.file_path, ranges=ranges)
 
             job.status = "completed"
             job.completed_at = datetime.utcnow()

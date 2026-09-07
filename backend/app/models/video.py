@@ -28,6 +28,10 @@ class Video(Base):
     video_metadata = Column(JSON, nullable=True)  # resolution, fps, codec, ai scores, etc
     error_message = Column(String, nullable=True)
 
+    # Spans of the video worth clipping, as [[start, end], ...] in seconds,
+    # marked by whoever uploaded it. Empty means analyze the whole thing.
+    clip_ranges = Column(JSON, nullable=True)
+
     # Processing progress
     processing_progress = Column(Float, default=0)  # 0-100
 

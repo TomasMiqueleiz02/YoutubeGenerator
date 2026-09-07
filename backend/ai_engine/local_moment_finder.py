@@ -52,53 +52,123 @@ class LocalMomentFinder:
     def _normalize(text: str) -> str:
         return "".join(c for c in text.lower() if c.isalnum() or c.isspace()).split()
 
-    def _reanchor(self, moments: List[Dict], segments: List[Dict]) -> List[Dict]:
+    @staticmethod
+    def _span(segments, index, moment, target=30.0, cap=60.0, floor=15.0):
         """
-        Replace model-supplied timestamps by locating each hook in the transcript.
+        Where the clip runs, measured off the transcript rather than the model.
+
+        The model is asked for start and end in seconds and answers in
+        whatever shape the timestamps in front of it happen to have. On a
+        span that began at 52:00 it returned the minute column -- 52 to 52,
+        54 to 55 -- so every moment came out zero seconds long and the entire
+        selection was thrown away before anything could use it.
+
+        Its numbers are used only when they describe a plausible clip.
+        Otherwise the clip runs from the anchored line until an idea closes,
+        which the merged segments already mark.
+        """
+        start = float(segments[index]["start"])
+
+        proposed = float(moment.end_seconds) - float(moment.start_seconds)
+        if floor <= proposed <= cap:
+            return start, start + proposed
+
+        end = float(segments[index]["end"])
+        following = index + 1
+        while end - start < target and following < len(segments):
+            candidate = float(segments[following]["end"])
+            if candidate - start > cap:
+                break
+            end = candidate
+            following += 1
+
+        return start, end
+
+    def _anchor(self, moments, segments, video_duration: float) -> List[Dict]:
+        """
+        Rebuild each moment around where its hook actually appears.
 
         A small model reads which line is the hook well and reports where it
         happens badly: measured against a real transcript its timestamps were
         off by two to six minutes, so clips were cut nowhere near the line
         their title promised. The hook text, on the other hand, is quoted
-        almost verbatim. Searching for it turns the timestamp into something
-        derived from the transcript instead of something the model invented.
+        almost verbatim. Searching for it turns both ends of the clip into
+        something derived from the transcript instead of something invented.
         """
         from difflib import SequenceMatcher
 
         haystack = [
-            (seg, self._normalize(seg.get("text") or "")) for seg in segments
+            (index, self._normalize(seg.get("text") or ""))
+            for index, seg in enumerate(segments)
         ]
+        rescale = self._uses_small_scale(moments)
 
         anchored: List[Dict] = []
         for moment in moments:
-            needle = self._normalize(moment.get("hook") or "")
+            needle = self._normalize(moment.hook or "")
             if not needle:
+                logger.info("Moment arrived without a hook to locate; dropped")
                 continue
 
-            best_score, best_seg = 0.0, None
-            for seg, words in haystack:
+            best_score, best_index = 0.0, None
+            for index, words in haystack:
                 if not words:
                     continue
                 score = SequenceMatcher(None, needle, words).ratio()
                 if score > best_score:
-                    best_score, best_seg = score, seg
+                    best_score, best_index = score, index
 
-            if best_seg is None or best_score < 0.4:
+            if best_index is None or best_score < 0.4:
                 logger.info(
                     "Could not locate hook in transcript (best %.2f): %s",
                     best_score,
-                    (moment.get("hook") or "")[:60],
+                    (moment.hook or "")[:60],
                 )
                 continue
 
-            length = moment["end"] - moment["start"]
-            start = float(best_seg["start"])
-            moment = dict(moment)
-            moment["start"] = start
-            moment["end"] = start + length
-            anchored.append(moment)
+            start, end = self._span(segments, best_index, moment)
+            if video_duration:
+                end = min(end, float(video_duration))
+            if end - start < 12:
+                continue
 
-        return anchored
+            score = int(moment.score) * (10 if rescale else 1)
+            anchored.append(
+                {
+                    "start": start,
+                    "end": end,
+                    "title": moment.title,
+                    "hook": moment.hook,
+                    "reason": moment.reason,
+                    "score": max(0, min(100, score)),
+                }
+            )
+
+        return self._resolve_overlaps(anchored)
+
+    @staticmethod
+    def _uses_small_scale(moments) -> bool:
+        """
+        True when the model answered on a 1-10 scale despite the schema.
+
+        Small models do this routinely. If nothing exceeds 10, read the whole
+        set that way rather than presenting every clip as a single digit.
+        """
+        scores = [int(m.score) for m in moments] or [0]
+        return max(scores) <= 10
+
+    @staticmethod
+    def _resolve_overlaps(moments: List[Dict]) -> List[Dict]:
+        """Best score wins where two moments cover the same stretch."""
+        moments.sort(key=lambda m: m["score"], reverse=True)
+        kept: List[Dict] = []
+        for candidate in moments:
+            if not any(
+                candidate["start"] < k["end"] and candidate["end"] > k["start"]
+                for k in kept
+            ):
+                kept.append(candidate)
+        return kept
 
     def find(
         self,
@@ -138,21 +208,13 @@ class LocalMomentFinder:
                 logger.info("Window %d/%d yielded %d", index, len(windows), len(found))
                 moments.extend(found)
 
-        cleaned = self._sanitize(moments, video_duration)
-
-        # Trust the model on which line is the hook, not on when it happens.
+        # Trust the model on which line is the hook, not on when it happens
+        # or how long it lasts. Without a transcript to anchor against there
+        # is nothing better than its own numbers, so they get cleaned instead.
         if segments:
-            cleaned = self._reanchor(cleaned, segments)
-            # Re-resolve overlaps: moving clips can push two onto each other.
-            cleaned.sort(key=lambda m: m["score"], reverse=True)
-            kept: List[Dict] = []
-            for candidate in cleaned:
-                if not any(
-                    candidate["start"] < k["end"] and candidate["end"] > k["start"]
-                    for k in kept
-                ):
-                    kept.append(candidate)
-            cleaned = kept
+            cleaned = self._anchor(moments, segments, video_duration)
+        else:
+            cleaned = self._sanitize(moments, video_duration)
 
         return cleaned[:max_clips]
 
@@ -232,17 +294,10 @@ class LocalMomentFinder:
 
     def _sanitize(self, moments, video_duration: float) -> List[Dict]:
         """
-        Drop moments that break timing rules and resolve overlaps.
-
-        Mirrors MomentFinder._sanitize: a smaller model needs this more, not
-        less, since it is likelier to invent a timestamp past the end.
+        Clean the model's own timings, for when there is no transcript to
+        anchor against. Mirrors MomentFinder._sanitize.
         """
-        raw_scores = [int(m.score) for m in moments] or [0]
-        # Small models routinely answer on a 1-10 scale no matter what the
-        # schema says. If nothing exceeds 10, read it as 0-10 and rescale
-        # rather than presenting every clip as a single-digit score.
-        rescale = max(raw_scores) <= 10
-
+        rescale = self._uses_small_scale(moments)
         cleaned: List[Dict] = []
 
         for moment in moments:
@@ -255,16 +310,12 @@ class LocalMomentFinder:
             if duration < 12:
                 continue
             if duration > 60:
-                # Overruns are common and usually mean the model kept going
-                # past the payoff. Trim to the cap instead of discarding a
-                # moment that started in the right place.
+                # Overruns usually mean the model kept going past the payoff.
+                # Trim to the cap rather than discarding a moment that started
+                # in the right place.
                 end = start + 60
-                duration = 60
 
-            score = int(moment.score)
-            if rescale:
-                score *= 10
-
+            score = int(moment.score) * (10 if rescale else 1)
             cleaned.append(
                 {
                     "start": start,
@@ -276,14 +327,4 @@ class LocalMomentFinder:
                 }
             )
 
-        cleaned.sort(key=lambda m: m["score"], reverse=True)
-        kept: List[Dict] = []
-        for candidate in cleaned:
-            overlaps = any(
-                candidate["start"] < k["end"] and candidate["end"] > k["start"]
-                for k in kept
-            )
-            if not overlaps:
-                kept.append(candidate)
-
-        return kept
+        return self._resolve_overlaps(cleaned)

@@ -38,8 +38,19 @@ class APIClient {
   }
 
   // Videos
-  async createVideo(youtubeUrl: string): Promise<Video> {
-    const res = await this.client.post("/videos/", { youtube_url: youtubeUrl });
+  async createVideo(youtubeUrl: string, ranges?: number[][]): Promise<Video> {
+    const res = await this.client.post("/videos/", {
+      youtube_url: youtubeUrl,
+      ranges: ranges && ranges.length > 0 ? ranges : null,
+    });
+    return res.data;
+  }
+
+  // Re-run analysis over different spans, reusing the downloaded file
+  async reprocessVideo(videoId: string, ranges: number[][]): Promise<Video> {
+    const res = await this.client.post(`/videos/${videoId}/reprocess`, {
+      ranges: ranges.length > 0 ? ranges : null,
+    });
     return res.data;
   }
 

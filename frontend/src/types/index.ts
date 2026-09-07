@@ -16,6 +16,8 @@ export interface Video {
   channel_name?: string;
   thumbnail_url?: string;
   duration_seconds?: number;
+  /** Spans marked as worth clipping, [[start, end], ...] in seconds */
+  clip_ranges?: number[][] | null;
   status: "pending" | "downloading" | "processing" | "analyzed" | "completed" | "error";
   processing_progress: number;
   error_message?: string;

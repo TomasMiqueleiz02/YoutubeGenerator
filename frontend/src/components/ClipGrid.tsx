@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
 import { apiClient } from "../services/api";
+import { useStore } from "../store/useStore";
+import { formatRanges, parseRanges } from "../lib/timeRanges";
+import RangeField from "./RangeField";
 import { Clip, Video } from "../types";
 
 interface Props {
@@ -67,6 +70,8 @@ export default function ClipGrid({ video, onBack }: Props) {
         </p>
       </div>
 
+      {done && <ReprocessPanel video={video} />}
+
       {!done && (
         <div className="card mb-6 p-4">
           <div className="mb-2 flex items-center justify-between text-sm">
@@ -116,6 +121,96 @@ export default function ClipGrid({ video, onBack }: Props) {
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * Run the analysis again over different parts of the same video.
+ *
+ * The download is the expensive half and it is already done, so trying a
+ * different stretch costs a few minutes rather than another copy of the
+ * file. This is where it matters most: you only find out the model picked
+ * badly after seeing the clips, and by then you know exactly which minutes
+ * it should have been reading.
+ */
+function ReprocessPanel({ video }: { video: Video }) {
+  const { updateVideo } = useStore();
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState(formatRanges(video.clip_ranges));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const parsed = parseRanges(text, video.duration_seconds);
+  const current = formatRanges(video.clip_ranges);
+
+  const submit = async () => {
+    if (parsed.error) {
+      setError(parsed.error);
+      return;
+    }
+    setError(null);
+    setBusy(true);
+    try {
+      updateVideo(await apiClient.reprocessVideo(video.id, parsed.ranges));
+      setOpen(false);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "No se pudo reprocesar.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mb-6">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="text-xs"
+        style={{ color: open ? "var(--text)" : "var(--text-dim)" }}
+      >
+        {open ? "▾" : "▸"} Reprocesar{" "}
+        <span style={{ color: "var(--text-faint)" }}>
+          {current ? `(ahora: ${current})` : "(ahora: video entero)"}
+        </span>
+      </button>
+
+      {open && (
+        <div className="card mt-2 p-4">
+          <p
+            className="mb-2.5 text-xs leading-relaxed"
+            style={{ color: "var(--text-dim)" }}
+          >
+            Marcá los tramos donde está lo bueno y se analiza solo eso. El
+            video ya está descargado, así que tarda minutos. Dejalo vacío para
+            volver a analizarlo entero.
+          </p>
+
+          <RangeField
+            value={text}
+            onChange={setText}
+            duration={video.duration_seconds}
+            disabled={busy}
+          />
+
+          <p className="mt-2.5 text-xs" style={{ color: "var(--warn)" }}>
+            Los clips actuales se borran y se reemplazan por los nuevos.
+          </p>
+
+          {error && (
+            <p className="mt-2 text-xs" style={{ color: "var(--bad)" }}>
+              {error}
+            </p>
+          )}
+
+          <button
+            onClick={submit}
+            disabled={busy || !!parsed.error}
+            className="btn btn-primary mt-3 !py-2 text-xs"
+          >
+            {busy ? "Encolando..." : "Reprocesar"}
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 

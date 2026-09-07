@@ -1,22 +1,35 @@
 import { useState } from "react";
 import { useStore } from "../store/useStore";
 import { apiClient } from "../services/api";
+import { parseRanges } from "../lib/timeRanges";
+import RangeField from "./RangeField";
 
 export default function VideoUpload() {
   const { addVideo } = useStore();
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rangesText, setRangesText] = useState("");
+  const [showRanges, setShowRanges] = useState(false);
+
+  const parsed = parseRanges(rangesText);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!url.trim()) return;
 
+    if (parsed.error) {
+      setError(parsed.error);
+      return;
+    }
+
     setError(null);
     setLoading(true);
     try {
-      addVideo(await apiClient.createVideo(url.trim()));
+      addVideo(await apiClient.createVideo(url.trim(), parsed.ranges));
       setUrl("");
+      setRangesText("");
+      setShowRanges(false);
     } catch (err: any) {
       const detail = err.response?.data?.detail || "";
       // Surface the common failures in plain language instead of a stack of
@@ -62,6 +75,37 @@ export default function VideoUpload() {
           {loading ? "Agregando..." : "Generar clips"}
         </button>
       </form>
+
+      <button
+        type="button"
+        onClick={() => setShowRanges((open) => !open)}
+        className="mt-3 text-xs"
+        style={{ color: showRanges ? "var(--text)" : "var(--text-dim)" }}
+      >
+        {showRanges ? "▾" : "▸"} Marcar tramos{" "}
+        {parsed.ranges.length > 0 && !showRanges ? (
+          <span style={{ color: "var(--accent)" }}>
+            ({parsed.ranges.length})
+          </span>
+        ) : (
+          <span style={{ color: "var(--text-faint)" }}>(opcional)</span>
+        )}
+      </button>
+
+      {showRanges && (
+        <div className="card mt-2 p-4">
+          <p className="mb-2.5 text-xs leading-relaxed" style={{ color: "var(--text-dim)" }}>
+            Si ya sabés dónde está lo bueno, marcalo. Se analiza solo eso, y
+            los clips salen mucho más rápido: un video de una hora tarda unos
+            45 minutos entero y unos 5 si marcás diez.
+          </p>
+          <RangeField
+            value={rangesText}
+            onChange={setRangesText}
+            disabled={loading}
+          />
+        </div>
+      )}
 
       {error && (
         <div
