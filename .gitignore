@@ -13,8 +13,12 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+# Anchored to the root: these name setuptools build output, and unanchored
+# they match any directory with the same name at any depth. "lib/" quietly
+# swallowed frontend/src/lib, so the frontend built here and failed to build
+# on the server against a file git had never been given.
+/lib/
+/lib64/
 parts/
 sdist/
 var/
