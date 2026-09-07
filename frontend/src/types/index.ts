@@ -35,6 +35,8 @@ export interface Clip {
   content_score?: number;
   title?: string;
   caption?: string;
+  social_caption?: string;
+  hashtags?: string[];
   status: "generated" | "edited" | "published" | "scheduled";
   published_platforms: string[];
   thumbnail_path?: string;

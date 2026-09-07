@@ -40,6 +40,7 @@ def generate_clips_task(self, video_id: str):
         import numpy as np
 
         from ai_engine import (
+            CaptionWriter,
             FaceTracker,
             VideoLayout,
             HeuristicMomentFinder,
@@ -147,6 +148,12 @@ def generate_clips_task(self, video_id: str):
         # Keep the whole frame by default: cropping to a column loses
         # whatever the subject was reacting to, which is often the point.
         layout = VideoLayout(mode=settings.CLIP_LAYOUT)
+        caption_writer = CaptionWriter()
+        merged_segments = (
+            Transcriber.merge_segments(transcript["segments"])
+            if transcript and transcript.get("segments")
+            else []
+        )
         for start_time, end_time, virality_score in clip_boundaries:
             clip = Clip(
                 # Assign the id up front: the column default only fires on
@@ -182,6 +189,22 @@ def generate_clips_task(self, video_id: str):
             if detail:
                 clip.title = detail["title"]
                 clip.caption = detail["hook"]
+
+            # Post text written from what is actually said in this window, so
+            # the clip arrives ready to publish rather than needing a caption
+            # invented by hand for each one.
+            if merged_segments and caption_writer.available:
+                spoken = " ".join(
+                    seg["text"]
+                    for seg in merged_segments
+                    if start_time <= seg["start"] < end_time
+                )
+                written = caption_writer.write(
+                    spoken, video.title, (transcript or {}).get("language")
+                )
+                if written:
+                    clip.social_caption = written["title"]
+                    clip.hashtags = written["hashtags"]
 
             # Cut the clip, then hand it to storage so it outlives this
             # container. Worker filesystems are ephemeral and not shared with

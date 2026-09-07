@@ -125,6 +125,7 @@ function ClipCard({ clip, rank }: { clip: Clip; rank: number }) {
     thumbnail_url: string | null;
   } | null>(null);
   const [failed, setFailed] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!clip.file_path) return;
@@ -198,6 +199,37 @@ function ClipCard({ clip, rank }: { clip: Clip; rank: number }) {
             {score}
           </span>
         </div>
+
+        {clip.social_caption && (
+          <div
+            className="mb-3 rounded-lg p-3 text-xs leading-relaxed"
+            style={{ background: "var(--bg)" }}
+          >
+            <p className="mb-1.5">{clip.social_caption}</p>
+            {clip.hashtags && clip.hashtags.length > 0 && (
+              <p style={{ color: "var(--accent)" }}>
+                {clip.hashtags.map((h) => `#${h}`).join(" ")}
+              </p>
+            )}
+            <button
+              onClick={() => {
+                const text = [
+                  clip.social_caption,
+                  (clip.hashtags || []).map((h) => `#${h}`).join(" "),
+                ]
+                  .filter(Boolean)
+                  .join("\n\n");
+                navigator.clipboard?.writeText(text);
+                setCopied(true);
+                window.setTimeout(() => setCopied(false), 1800);
+              }}
+              className="mt-2 font-semibold"
+              style={{ color: copied ? "var(--good)" : "var(--text-dim)" }}
+            >
+              {copied ? "Copiado" : "Copiar texto"}
+            </button>
+          </div>
+        )}
 
         {media?.video_url && (
           <a

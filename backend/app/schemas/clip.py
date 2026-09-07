@@ -30,6 +30,8 @@ class ClipResponse(BaseModel):
     content_score: Optional[float] = None
     title: Optional[str] = None
     caption: Optional[str] = None
+    social_caption: Optional[str] = None
+    hashtags: Optional[List[str]] = None
     status: str
     published_platforms: List[str] = []
     thumbnail_path: Optional[str] = None

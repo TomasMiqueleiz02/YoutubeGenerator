@@ -23,6 +23,11 @@ class Clip(Base):
     title = Column(String, nullable=True)
     caption = Column(Text, nullable=True)
 
+    # Ready-to-post text written from what is said in the clip, kept
+    # apart from `caption` so the hook stays available for display.
+    social_caption = Column(Text, nullable=True)
+    hashtags = Column(JSON, nullable=True)
+
     file_path = Column(String, nullable=True)
     thumbnail_path = Column(String, nullable=True)
 
