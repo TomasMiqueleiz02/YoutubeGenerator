@@ -44,11 +44,20 @@ class Settings(BaseSettings):
     # audio/video energy heuristics, which find noise rather than meaning.
     ANTHROPIC_API_KEY: str = ""
     ANTHROPIC_MODEL: str = "claude-opus-5"
-    WHISPER_MODEL_SIZE: str = "base"
+    # "small" over "base": transcript quality is what clip selection reads,
+    # and a noisy transcript makes even a good model pick badly.
+    WHISPER_MODEL_SIZE: str = "small"
 
     # "fit" keeps the entire frame over a blurred backdrop; "crop"
     # fills the screen with a vertical slice and discards the rest.
     CLIP_LAYOUT: str = "fit"
+
+    # Local model for clip selection. Runs on this machine through
+    # Ollama, so selection stays semantic without a metered API and
+    # without a human in the loop.
+    LOCAL_LLM_ENABLED: bool = True
+    LOCAL_LLM_HOST: str = "http://localhost:11434"
+    LOCAL_LLM_MODEL: str = "qwen2.5:7b"
 
     # Social APIs
     TIKTOK_CLIENT_KEY: str = ""

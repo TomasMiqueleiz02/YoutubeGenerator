@@ -1,4 +1,7 @@
 import logging
+import os
+
+import numpy as np
 from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -18,14 +21,66 @@ class Transcriber:
         self.language = language
         self._model = None
 
+    @staticmethod
+    def _register_cuda_libraries() -> None:
+        """
+        Put the pip-installed CUDA DLLs where Windows will find them.
+
+        nvidia-cublas-cu12 and nvidia-cudnn-cu12 drop their DLLs inside
+        site-packages, which is not on the DLL search path. Without this the
+        model constructs fine and then fails at the first encode call with a
+        missing cublas64_12.dll.
+        """
+        if os.name != "nt":
+            return
+        try:
+            import site
+
+            roots = list(site.getsitepackages())
+            user_site = site.getusersitepackages()
+            if isinstance(user_site, str):
+                roots.append(user_site)
+
+            for root in roots:
+                nvidia_root = os.path.join(root, "nvidia")
+                if not os.path.isdir(nvidia_root):
+                    continue
+                for dirpath, dirnames, _files in os.walk(nvidia_root):
+                    if os.path.basename(dirpath) == "bin":
+                        os.add_dll_directory(dirpath)
+        except Exception:
+            # Not fatal: the CPU path still works
+            logger.debug("Could not register CUDA DLL directories", exc_info=True)
+
     def _load(self):
         if self._model is None:
             from faster_whisper import WhisperModel
 
-            # int8 on CPU keeps memory low enough for a small container
-            self._model = WhisperModel(
-                self.model_size, device="cpu", compute_type="int8"
-            )
+            # Prefer the GPU: it makes a larger, more accurate model cheaper
+            # than a small one on CPU, and transcript quality is what clip
+            # selection reads. Verified with a real encode, because building
+            # the model succeeds even when the CUDA runtime is missing.
+            self._register_cuda_libraries()
+            try:
+                model = WhisperModel(
+                    self.model_size, device="cuda", compute_type="float16"
+                )
+                model.encode(
+                    np.zeros(
+                        (model.feature_extractor.n_mels, 3000), dtype=np.float32
+                    )
+                )
+                self._model = model
+                logger.info("Whisper %s running on GPU", self.model_size)
+            except Exception as exc:
+                logger.info(
+                    "GPU unavailable for Whisper (%s); using CPU",
+                    str(exc)[:120],
+                )
+                # int8 on CPU keeps memory low enough for a small container
+                self._model = WhisperModel(
+                    self.model_size, device="cpu", compute_type="int8"
+                )
         return self._model
 
     def transcribe(self, media_path: str) -> Dict:

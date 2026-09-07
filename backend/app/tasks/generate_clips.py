@@ -12,6 +12,10 @@ from app.services import ClipService, StorageService
 
 logger = logging.getLogger(__name__)
 
+# Below this, a model's selection is treated as a failed read of the
+# transcript rather than a short list of genuinely good moments.
+MIN_LLM_MOMENTS = 3
+
 
 @shared_task(bind=True, name="tasks.generate_clips")
 def generate_clips_task(self, video_id: str):
@@ -39,6 +43,7 @@ def generate_clips_task(self, video_id: str):
             FaceTracker,
             VideoLayout,
             HeuristicMomentFinder,
+            LocalMomentFinder,
             MomentFinder,
             SubtitleGenerator,
             SubtitleStyle,
@@ -65,7 +70,37 @@ def generate_clips_task(self, video_id: str):
                 if moments:
                     logger.info("Selected %d moments via LLM for %s", len(moments), video_id)
 
-            # Tier 2: free text heuristics over the same transcript
+            # Tier 2: a model running on this machine. Same prompt and schema
+            # as tier 1, no metered API, and still unattended.
+            if not moments:
+                local = LocalMomentFinder()
+                if local.available:
+                    moments = local.find(
+                        transcript_text=Transcriber.to_timestamped_text(transcript),
+                        video_duration=video.duration_seconds or 0,
+                        video_title=video.title,
+                    )
+                    # A small model handles clean, structured speech well and
+                    # messy multi-speaker audio poorly, where it returns a
+                    # couple of weak picks. Two thin results should not beat
+                    # eight solid heuristic ones, so it has to clear a floor
+                    # before it gets to replace them.
+                    if 0 < len(moments) < MIN_LLM_MOMENTS:
+                        logger.info(
+                            "Local model returned only %d moments for %s; "
+                            "using heuristics instead",
+                            len(moments),
+                            video_id,
+                        )
+                        moments = []
+                    elif moments:
+                        logger.info(
+                            "Selected %d moments via local model for %s",
+                            len(moments),
+                            video_id,
+                        )
+
+            # Tier 3: free text heuristics over the same transcript
             if not moments:
                 moments = HeuristicMomentFinder().find(
                     transcript=transcript,
