@@ -142,6 +142,48 @@ class Transcriber:
         }
 
     @staticmethod
+    def merge_segments(
+        segments: List[Dict], max_gap: float = 1.2, max_duration: float = 30.0
+    ) -> List[Dict]:
+        """
+        Join consecutive segments into continuous blocks of speech.
+
+        Whisper splits on breath and pause, so conversational audio comes back
+        as a stream of three-word fragments: "no, nothing", "there we go",
+        "is it good?". A model reading those sees debris and cannot tell where
+        an idea starts or ends. Merging across short gaps rebuilds paragraphs,
+        which is the shape the selection prompt is written for.
+
+        Blocks are cut at a long pause or once they run long enough that they
+        would no longer fit inside a clip.
+        """
+        merged: List[Dict] = []
+
+        for segment in segments:
+            text = (segment.get("text") or "").strip()
+            if not text:
+                continue
+
+            if merged:
+                previous = merged[-1]
+                gap = float(segment["start"]) - float(previous["end"])
+                span = float(segment["end"]) - float(previous["start"])
+                if gap <= max_gap and span <= max_duration:
+                    previous["end"] = float(segment["end"])
+                    previous["text"] = "%s %s" % (previous["text"], text)
+                    continue
+
+            merged.append(
+                {
+                    "start": float(segment["start"]),
+                    "end": float(segment["end"]),
+                    "text": text,
+                }
+            )
+
+        return merged
+
+    @staticmethod
     def to_timestamped_text(transcript: Dict, max_chars: int = 120000) -> str:
         """
         Flatten segments into "[mm:ss] text" lines for a language model.
@@ -152,7 +194,8 @@ class Transcriber:
         lines: List[str] = []
         used = 0
 
-        for segment in transcript.get("segments", []):
+        # Read merged blocks rather than raw fragments; see merge_segments.
+        for segment in Transcriber.merge_segments(transcript.get("segments", [])):
             start = int(segment["start"])
             stamp = "[%02d:%02d]" % (start // 60, start % 60)
             line = "%s %s" % (stamp, segment["text"])
