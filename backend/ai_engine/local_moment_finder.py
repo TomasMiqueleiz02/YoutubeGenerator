@@ -48,12 +48,65 @@ class LocalMomentFinder:
         except Exception:
             return False
 
+    @staticmethod
+    def _normalize(text: str) -> str:
+        return "".join(c for c in text.lower() if c.isalnum() or c.isspace()).split()
+
+    def _reanchor(self, moments: List[Dict], segments: List[Dict]) -> List[Dict]:
+        """
+        Replace model-supplied timestamps by locating each hook in the transcript.
+
+        A small model reads which line is the hook well and reports where it
+        happens badly: measured against a real transcript its timestamps were
+        off by two to six minutes, so clips were cut nowhere near the line
+        their title promised. The hook text, on the other hand, is quoted
+        almost verbatim. Searching for it turns the timestamp into something
+        derived from the transcript instead of something the model invented.
+        """
+        from difflib import SequenceMatcher
+
+        haystack = [
+            (seg, self._normalize(seg.get("text") or "")) for seg in segments
+        ]
+
+        anchored: List[Dict] = []
+        for moment in moments:
+            needle = self._normalize(moment.get("hook") or "")
+            if not needle:
+                continue
+
+            best_score, best_seg = 0.0, None
+            for seg, words in haystack:
+                if not words:
+                    continue
+                score = SequenceMatcher(None, needle, words).ratio()
+                if score > best_score:
+                    best_score, best_seg = score, seg
+
+            if best_seg is None or best_score < 0.4:
+                logger.info(
+                    "Could not locate hook in transcript (best %.2f): %s",
+                    best_score,
+                    (moment.get("hook") or "")[:60],
+                )
+                continue
+
+            length = moment["end"] - moment["start"]
+            start = float(best_seg["start"])
+            moment = dict(moment)
+            moment["start"] = start
+            moment["end"] = start + length
+            anchored.append(moment)
+
+        return anchored
+
     def find(
         self,
         transcript_text: str,
         video_duration: float,
         video_title: Optional[str] = None,
         max_clips: int = 10,
+        segments: Optional[List[Dict]] = None,
     ) -> List[Dict]:
         """
         Return chosen moments, or an empty list so the caller falls back.
@@ -86,6 +139,21 @@ class LocalMomentFinder:
                 moments.extend(found)
 
         cleaned = self._sanitize(moments, video_duration)
+
+        # Trust the model on which line is the hook, not on when it happens.
+        if segments:
+            cleaned = self._reanchor(cleaned, segments)
+            # Re-resolve overlaps: moving clips can push two onto each other.
+            cleaned.sort(key=lambda m: m["score"], reverse=True)
+            kept: List[Dict] = []
+            for candidate in cleaned:
+                if not any(
+                    candidate["start"] < k["end"] and candidate["end"] > k["start"]
+                    for k in kept
+                ):
+                    kept.append(candidate)
+            cleaned = kept
+
         return cleaned[:max_clips]
 
     def _split(self, lines: List[str], max_chars: int = 9000) -> List[str]:

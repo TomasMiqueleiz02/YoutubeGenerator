@@ -79,6 +79,9 @@ def generate_clips_task(self, video_id: str):
                         transcript_text=Transcriber.to_timestamped_text(transcript),
                         video_duration=video.duration_seconds or 0,
                         video_title=video.title,
+                        # Used to locate each hook in the transcript, since the
+                        # model's own timestamps are unreliable.
+                        segments=Transcriber.merge_segments(transcript["segments"]),
                     )
                     # A small model handles clean, structured speech well and
                     # messy multi-speaker audio poorly, where it returns a
