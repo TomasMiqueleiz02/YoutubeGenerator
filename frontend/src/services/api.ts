@@ -1,5 +1,5 @@
 import axios, { AxiosInstance } from "axios";
-import { Clip, Video, AuthResponse, User } from "../types";
+import { Clip, Video, AuthResponse, User, WorkerStatus } from "../types";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
 
@@ -105,6 +105,12 @@ class APIClient {
 
   async getClipAnalytics(clipId: string): Promise<any> {
     const res = await this.client.get(`/publish/${clipId}/analytics`);
+    return res.data;
+  }
+
+  // Whether the machine at home that processes videos is switched on
+  async getWorkerStatus(): Promise<WorkerStatus> {
+    const res = await this.client.get("/worker/status");
     return res.data;
   }
 }

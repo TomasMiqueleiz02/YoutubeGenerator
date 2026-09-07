@@ -49,3 +49,10 @@ export interface AuthResponse {
   access_token: string;
   token_type: string;
 }
+
+export interface WorkerStatus {
+  /** null when the API could not reach the broker, so nothing can be said */
+  online: boolean | null;
+  hostname: string | null;
+  last_seen: number | null;
+}

@@ -5,6 +5,7 @@ import { useVideoPolling } from "../hooks/useVideoPolling";
 import VideoUpload from "./VideoUpload";
 import VideoList from "./VideoList";
 import ClipGrid from "./ClipGrid";
+import WorkerStatus from "./WorkerStatus";
 import { Video } from "../types";
 
 export default function Dashboard() {
@@ -58,6 +59,7 @@ export default function Dashboard() {
           </button>
 
           <div className="flex items-center gap-3">
+            <WorkerStatus />
             <span className="hidden text-sm sm:block" style={{ color: "var(--text-dim)" }}>
               {user?.username}
             </span>

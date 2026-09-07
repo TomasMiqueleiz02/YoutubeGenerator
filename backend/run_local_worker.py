@@ -8,6 +8,8 @@ network.
 
 Usage:  python run_local_worker.py
 Stop:   Ctrl+C  (queued videos stay queued and resume next run)
+
+To have Windows start this on its own, run install-autostart.ps1 once.
 """
 
 import os
@@ -83,9 +85,21 @@ def main() -> None:
     from app.tasks.celery_app import celery_app
 
     # solo pool: Windows lacks fork(), which the default prefork pool needs
-    celery_app.worker_main(
-        ["worker", "--loglevel=info", "--pool=solo", "--without-gossip", "--without-mingle"]
-    )
+    args = [
+        "worker",
+        "--loglevel=info",
+        "--pool=solo",
+        "--without-gossip",
+        "--without-mingle",
+    ]
+
+    # Started by the scheduled task through pythonw, there is no console at
+    # all and sys.stdout is None. Without somewhere to write, the worker
+    # would run completely blind.
+    if sys.stdout is None:
+        args.append("--logfile=%s" % (here / "worker.log"))
+
+    celery_app.worker_main(args)
 
 
 if __name__ == "__main__":

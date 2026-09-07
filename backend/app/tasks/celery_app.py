@@ -1,6 +1,7 @@
 import os
 
 from celery import Celery
+from celery.signals import worker_ready, worker_shutdown
 
 celery_app = Celery(
     "clip_generator",
@@ -31,14 +32,55 @@ celery_app.conf.update(
     task_acks_late=True,
     task_reject_on_worker_lost=True,
 
-    # How long Redis waits before deciding a claimed task was abandoned and
-    # handing it to another worker. The default is an hour, which means a
-    # killed worker leaves a video frozen mid-progress for that long. Five
-    # minutes recovers quickly while still exceeding any single task step.
-    broker_transport_options={"visibility_timeout": 300},
-    result_backend_transport_options={"visibility_timeout": 300},
+    # How long Redis waits before deciding a claimed task was abandoned. This
+    # has to stay above the longest a task can legitimately run: analysis of a
+    # long video passes five minutes easily, and anything shorter than the run
+    # time hands a still-running task to a second worker. Recovery does not
+    # depend on this any more (see app/tasks/recovery.py), so it is set for
+    # safety rather than for speed.
+    broker_transport_options={"visibility_timeout": 60 * 60},
+    result_backend_transport_options={"visibility_timeout": 60 * 60},
 
     # One video at a time per worker: analysis is CPU-bound, so overlapping
     # jobs slow every one of them down rather than finishing any sooner.
     worker_prefetch_multiplier=1,
 )
+
+
+@worker_ready.connect
+def _on_worker_ready(sender=None, **_):
+    """
+    Requeue whatever a previous worker died holding, then start beating.
+
+    The sweep runs on its own thread, after a pause. It has to ask the other
+    workers what they are holding before it moves anything, and that answer
+    travels over the same broker: asking the instant this worker goes ready
+    got no reply at all, which the sweep can only read as "cannot tell", and
+    then it leaves the orphans alone. A few seconds of delay costs nothing
+    and makes the difference between recovering a stuck video and skipping
+    it.
+    """
+    import threading
+    import time
+
+    from app.tasks.heartbeat import start_heartbeat
+    from app.tasks.recovery import restore_orphaned_tasks
+
+    app = sender.app if sender is not None else celery_app
+    started = time.time()
+
+    def sweep():
+        time.sleep(5)
+        # Nothing claimed after this worker came up can be an orphan.
+        restore_orphaned_tasks(app, claimed_before=started)
+
+    threading.Thread(target=sweep, name="orphan-recovery", daemon=True).start()
+    start_heartbeat(app)
+
+
+@worker_shutdown.connect
+def _clear_heartbeat(sender=None, **_):
+    """Say goodbye, so the page shows the worker down the moment it stops."""
+    from app.tasks.heartbeat import clear_heartbeat
+
+    clear_heartbeat(getattr(sender, "app", None) or celery_app)

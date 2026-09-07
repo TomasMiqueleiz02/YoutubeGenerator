@@ -50,6 +50,47 @@ async def health_check():
     return {"status": "ok", "service": "youtube-clip-generator"}
 
 
+@app.get("/api/worker/status")
+async def worker_status():
+    """
+    Report whether the machine that processes videos is running.
+
+    Downloads happen on a PC at home rather than here, because YouTube blocks
+    datacenter addresses. That machine can be switched off, and when it is,
+    an upload sits at "pending" with nothing to explain why. The worker
+    writes an expiring key while it lives; this reads it, so the page can
+    say so instead of leaving someone waiting on a queue nobody is serving.
+    """
+    import json
+
+    import redis
+
+    from app.tasks.heartbeat import HEARTBEAT_KEY
+
+    try:
+        client = redis.from_url(settings.CELERY_BROKER_URL)
+        raw = client.get(HEARTBEAT_KEY)
+    except Exception:
+        logger.exception("Could not read the worker heartbeat")
+        # The broker being unreachable from here says nothing about the
+        # worker, so do not claim it is down.
+        return {"online": None, "hostname": None, "last_seen": None}
+
+    if not raw:
+        return {"online": False, "hostname": None, "last_seen": None}
+
+    try:
+        beat = json.loads(raw)
+    except ValueError:
+        return {"online": True, "hostname": None, "last_seen": None}
+
+    return {
+        "online": True,
+        "hostname": beat.get("hostname"),
+        "last_seen": beat.get("at"),
+    }
+
+
 @app.get("/")
 async def root():
     return {"message": "Welcome to YouTube AI Clip Generator API"}

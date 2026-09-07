@@ -22,14 +22,22 @@ def download_video_task(self, video_id: str):
             logger.error("Video not found: %s", video_id)
             return
 
-        job = Job(
-            video_id=video_id,
-            task_type="download",
-            status="processing",
-            celery_task_id=self.request.id,
-            started_at=datetime.utcnow(),
-        )
-        db.add(job)
+        # A task that comes back from the broker keeps the id it was given
+        # the first time, and celery_task_id is unique: inserting a second
+        # row for the same run fails on the constraint and takes the retry
+        # down with it. Reuse the row the earlier attempt left behind.
+        job = db.query(Job).filter(Job.celery_task_id == self.request.id).first()
+        if job is None:
+            job = Job(
+                video_id=video_id,
+                task_type="download",
+                celery_task_id=self.request.id,
+            )
+            db.add(job)
+        job.status = "processing"
+        job.started_at = datetime.utcnow()
+        job.error_message = None
+        job.completed_at = None
 
         video.status = "downloading"
         video.processing_progress = 5
